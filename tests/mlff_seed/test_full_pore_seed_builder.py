@@ -1,12 +1,14 @@
-import pandas as pd
+from pathlib import Path
 
-from tests.pore.test_silica_patch_crop import make_manual_pore
-from pepp_initial_builder.mlff_seed.full_pore_seed import build_full_pore_seed_structures
+from pepp_initial_builder.mlff_seed.full_pore_seed import _write_packmol_full_pore_input
+from pepp_initial_builder.pore.porems_builder import atoms_from_elements
 
 
-def test_full_pore_seed_builder(tmp_path):
-    cfg = make_manual_pore(tmp_path, "configs/mlff_seed.yaml")
-    manifest = build_full_pore_seed_structures(cfg, "tiny")
-    df = pd.read_csv(manifest)
-    assert len(df[df["status"] == "available"]) > 0
-    assert df["extxyz_path"].iloc[0].endswith(".extxyz")
+def test_full_pore_packmol_input_uses_cylinder_constraint(tmp_path):
+    pore_atoms = atoms_from_elements(["Si", "O"], [[10, 10, 10], [12, 10, 10]], 0)
+    template = tmp_path / "pe_chain.pdb"
+    template.write_text("END\n", encoding="utf-8")
+    inp = _write_packmol_full_pore_input(tmp_path, pore_atoms, [template], (30.0, 30.0, 30.0), 10.0, 3.0, 3.0, 1, {"packing": {"tolerance_A": 2.0, "maxit": 2000}})
+    text = Path(inp).read_text(encoding="utf-8")
+    assert "fixed_silica_pore.pdb" in text
+    assert "inside cylinder 15.000000 15.000000 3.000000 0.0 0.0 1.0 7.000000 24.000000" in text

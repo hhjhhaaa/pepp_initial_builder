@@ -5,7 +5,7 @@ from typing import Sequence
 
 from pepp_initial_builder.common.cli import config_path, mode_from_args, workflow_parser
 from pepp_initial_builder.common.config import load_config
-from pepp_initial_builder.polymer.chain_builder import build_systems
+from pepp_initial_builder.polymer.emc_builder import build_systems
 from pepp_initial_builder.polymer.manifest import export_manifest
 from pepp_initial_builder.polymer.matrix import write_matrix
 from pepp_initial_builder.polymer.validation import validate_systems

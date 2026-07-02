@@ -54,10 +54,22 @@ def main() -> None:
             "pandas": _module_status("pandas"),
             "yaml": _module_status("yaml"),
             "ase": _module_status("ase"),
+            "openbabel": _module_status("openbabel"),
+        },
+        "emc": {
+            "configured_root": tools.get("known_emc_root"),
+            "root_exists": Path(str(tools.get("known_emc_root", ""))).expanduser().exists(),
+            "executable": str(Path(str(tools.get("known_emc_root", ""))).expanduser() / "bin/emc_linux_x86_64") if (Path(str(tools.get("known_emc_root", ""))).expanduser() / "bin/emc_linux_x86_64").exists() else shutil.which("emc"),
+            "emc_pl": str(Path(str(tools.get("known_emc_root", ""))).expanduser() / "scripts/emc.pl") if (Path(str(tools.get("known_emc_root", ""))).expanduser() / "scripts/emc.pl").exists() else shutil.which("emc.pl"),
+            "emc_setup_pl": str(Path(str(tools.get("known_emc_root", ""))).expanduser() / "scripts/emc_setup.pl") if (Path(str(tools.get("known_emc_root", ""))).expanduser() / "scripts/emc_setup.pl").exists() else shutil.which("emc_setup.pl") or shutil.which("emc_setup"),
         },
         "packmol": {
             "configured": tools.get("known_packmol_executable"),
             "found": shutil.which("packmol") or (tools.get("known_packmol_executable") if Path(str(tools.get("known_packmol_executable", ""))).exists() else None),
+        },
+        "openbabel": {
+            "configured": tools.get("known_openbabel_executable"),
+            "found": shutil.which("obabel") or (tools.get("known_openbabel_executable") if Path(str(tools.get("known_openbabel_executable", ""))).exists() else None),
         },
         "lammps": {
             "configured": tools.get("known_lammps_executable"),

@@ -31,26 +31,23 @@ conditions_for_later_mlff:
   target_pressure_atm: 1.0
 tools:
   preferred_builder: emc
-  fallback_builder: packmol
-  allow_python_chain_builder: true
-  allow_lammps_cleanup: true
-  known_emc_root:
+  known_emc_root: ~/software/EMC
   known_packmol_executable:
   known_lammps_executable:
+  known_openbabel_executable:
 builder:
-  representation: all_atom_C_H
-  chain_conformation: random_walk_carbon_skeleton
-  add_hydrogen_by_valence: true
+  representation: emc_pcff_all_atom
+  chain_conformation: emc_generated
   pp_tacticity: atactic_like_v0
   min_heavy_atom_distance_A: 1.8
   min_hydrogen_distance_A: 0.8
-  max_packing_attempts: 20000
 emc:
   enabled: true
+  force_field: pcff
   require_all_atom_output: true
   attempt_timeout_seconds: 300
-  preferred_force_fields: [OPLS-AA, PCFF, TraPPE]
-  reject_united_atom_output: true
+  build_timeout_seconds: 900
+  preferred_force_fields: [PCFF]
   save_discovery_report: true
 packmol:
   enabled: true
@@ -58,20 +55,3 @@ packmol:
   maxit: 2000
   filetype: pdb
   timeout_seconds: 300
-lammps_cleanup:
-  enabled: true
-  purpose: overlap_cleanup_only_not_training_data
-  units: real
-  atom_style: full
-  pair_style_soft: soft
-  pair_style_final: lj/cut
-  pair_cutoff_A: 10.0
-  timestep_fs: 0.25
-  minimize_maxiter: 2000
-  soft_push_steps: 5000
-  short_nvt_steps: 5000
-  thermo_stride: 100
-  dump_stride: 1000
-force_field:
-  name: generic_all_atom_cleanup_v0
-  purpose: cleanup_only_not_scientific_force_field

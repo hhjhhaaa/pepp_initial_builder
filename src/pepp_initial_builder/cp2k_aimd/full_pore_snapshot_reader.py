@@ -60,6 +60,7 @@ def _normalize_row(row: Dict[str, str], source_manifest: Path, default_stage: st
 
 def read_full_pore_snapshot_sources(config: Dict[str, Any]) -> List[Dict[str, str]]:
     paths = config.get("paths", {})
+    allowed_stages = set(config.get("cp2k_crop", {}).get("source_priority", ["lammps_relaxed_full_pore", "lammps_exploration_snapshot"]))
     candidates = [
         p(config, "exports_dir") / "full_pore_snapshot_manifest.csv",
         p(config, "exports_dir") / "mlff_seed_manifest.csv",
@@ -75,6 +76,8 @@ def read_full_pore_snapshot_sources(config: Dict[str, Any]) -> List[Dict[str, st
         for row in _existing_manifest(manifest):
             default_stage = "raw_full_pore_seed" if "mlff_seed" in manifest.name or "full_pore_seed" in manifest.name else "lammps_exploration_snapshot"
             normalized = _normalize_row(row, manifest, default_stage)
+            if normalized["source_stage"] not in allowed_stages:
+                continue
             path = normalized["source_snapshot_path"]
             key = (normalized["source_full_pore_id"], path, normalized["source_frame_index"])
             if not path or key in seen:

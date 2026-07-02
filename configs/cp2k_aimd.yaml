@@ -61,7 +61,7 @@ aimd_local_matrix:
   pilot_max_structures: 60
   main_max_structures: 200
 cp2k_crop:
-  source_priority: [lammps_relaxed_full_pore, lammps_exploration_snapshot, raw_full_pore_seed]
+  source_priority: [lammps_relaxed_full_pore, lammps_exploration_snapshot]
   tiny_max_atoms: 100
   pilot_max_atoms: 200
   main_max_atoms: 300
@@ -69,11 +69,9 @@ cp2k_crop:
   pilot_crop_radius_A: 7.0
   main_crop_radius_A: 8.0
   require_full_pore_source: true
-  raw_full_pore_seed_recommended_label_mode: single_point_force_only
 reuse_lmp_proj:
   enabled: true
   wrap_reusable_modules: false
-  fallback_to_internal_implementation: true
   strategy: review_and_reimplement_cleanly
 dataset_scope:
   elements: [C, H, O, Si]

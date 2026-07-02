@@ -1,8 +1,8 @@
 # PE/PP-Silica Data Generation Module
 
-`pepp_initial_builder` is the PE/PP-silica data-generation module. It prepares polymer structures, PoreMS silica pores and patches, full-pore MLFF starting structures, CP2K/AIMD labeling inputs, parsed CP2K labels, AIMD train/val/test datasets, manifests, and validation reports.
+`pepp_initial_builder` is the PE/PP-silica data-generation module. It prepares EMC PE/PP polymer structures, PoreMS silica pores and patches, Packmol-packed full-pore starting structures, CP2K/AIMD labeling inputs, parsed CP2K labels, AIMD train/val/test datasets, manifests, and validation reports.
 
-It does not train MLFF models, run formal MLFF production trajectories, train Graph-SPIB, or do descriptor distillation. LAMMPS relax here is used only to prepare full-pore starting structures for later MLFF production; CP2K/AIMD is used to produce DFT-level labels for MLFF training.
+It does not train MLFF models, run formal MLFF production trajectories, train Graph-SPIB, or do descriptor distillation. The modeling line is EMC for PE/PP polymer generation, Packmol for constrained pore packing, Open Babel for format conversion, LAMMPS for full-pore equilibration, then CP2K/AIMD crops from LAMMPS-relaxed full-pore structures.
 
 The project boundary has three top-level repositories:
 
@@ -15,7 +15,7 @@ The project boundary has three top-level repositories:
 Internal modules:
 
 ```text
-src/pepp_initial_builder/polymer/    PE/PP initial structures
+src/pepp_initial_builder/polymer/    EMC PE/PP initial structures
 src/pepp_initial_builder/pore/       PoreMS full pores and silica patches
 src/pepp_initial_builder/mlff_seed/  full pore + PE/PP packing + LAMMPS relax starting structures
 src/pepp_initial_builder/cp2k_aimd/  CP2K ENERGY_FORCE / short NVT AIMD labeling datasets
@@ -67,7 +67,7 @@ python scripts/export/summarize_outputs.py
 pytest -q
 ```
 
-No legacy layers are kept. No synthetic label data are generated. No fake CP2K/AIMD/MLFF outputs are allowed.
+No legacy layers are kept. No Python random-walk polymer builder or internal Packmol substitute is kept. No synthetic label data are generated. No fake CP2K/AIMD/MLFF outputs are allowed.
 
 Important outputs:
 
@@ -101,7 +101,7 @@ Recommended HPC tiny first-run order:
 
 The combined `outputs/jobs/submit_cp2k_seed_tiny.sh` exists for convenience, but the split SP-then-short-AIMD path is the recommended validation route.
 
-CP2K/AIMD seed structures are cropped from full-pore PE/PP-silica seeds or later LAMMPS relax/exploration snapshots. Hand-designed silica patches are kept in the pore workflow for bootstrap geometry checks, but the CP2K seed builder requires full-pore seed/snapshot sources and records source stage, local environment reason, frame provenance, crop boundary treatment, local composition, wall distance, and cell centering metadata.
+CP2K/AIMD seed structures are cropped only from LAMMPS-relaxed full-pore PE/PP-silica sources or later LAMMPS exploration snapshots. Raw Packmol full-pore seeds are not accepted as CP2K crop sources. Hand-designed silica patches are kept in the pore workflow for bootstrap geometry checks, but the CP2K seed builder requires full-pore seed/snapshot sources and records source stage, local environment reason, frame provenance, crop boundary treatment, local composition, wall distance, and cell centering metadata.
 
 For tiny CP2K crop validation, local crops are capped at `<=100` atoms. Crop cells are rebuilt as orthorhombic local cells with vacuum padding, atoms are translated near the local cell center, and `PERIODIC XYZ` is used for v0 with the padded cell so CP2K outputs stay compatible with periodic MLFF datasets. If mirror interactions become problematic in measured runs, a later version should switch these crops to a slab or cluster strategy.
 

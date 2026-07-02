@@ -59,9 +59,9 @@ class SystemTopology:
     chains: List[Chain]
     box: Tuple[float, float, float]
     system_id: str
-    builder_used: str = "packmol_fallback"
-    topology_source: str = "python_all_atom_builder"
-    coordinate_source: str = "packmol_coordinates"
+    builder_used: str = "emc"
+    topology_source: str = "emc"
+    coordinate_source: str = "emc"
 
     def atom_by_id(self) -> dict[int, Atom]:
         return {atom.atom_id: atom for atom in self.atoms}

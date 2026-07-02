@@ -12,6 +12,8 @@ tools:
   porems_search_roots: [., ~/software, ~]
   porems_path_hint:
   packmol_path_hint:
+  known_emc_root: ~/software/EMC
+  known_openbabel_executable:
   ase_required: true
   cp2k_not_required_here: true
   mlff_not_required_here: true
@@ -55,6 +57,9 @@ full_pore_seed:
   min_polymer_inside_pore_fraction: 0.95
   min_polymer_silica_distance_A: 1.6
 packing:
+  tolerance_A: 2.0
+  maxit: 2000
+  timeout_seconds: 300
   use_packmol_for_polymer_placement: true
   min_heavy_atom_distance_A: 1.8
   min_hydrogen_distance_A: 0.8
@@ -70,3 +75,8 @@ outputs:
   write_atom_table: true
   write_segment_table: true
   require_cell_pbc: true
+emc:
+  enabled: true
+  force_field: pcff
+  attempt_timeout_seconds: 300
+  build_timeout_seconds: 900

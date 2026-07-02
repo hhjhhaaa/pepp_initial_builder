@@ -25,6 +25,7 @@ def discover_tools(config: Dict[str, Any]) -> Dict[str, Any]:
     emc = configured_path(tools.get("known_emc_root"))
     packmol = configured_path(tools.get("known_packmol_executable"))
     lammps = configured_path(tools.get("known_lammps_executable"))
+    openbabel = configured_path(tools.get("known_openbabel_executable"))
     report = {
         "python_executable": sys.executable,
         "python_version": sys.version.split()[0],
@@ -42,7 +43,7 @@ def discover_tools(config: Dict[str, Any]) -> Dict[str, Any]:
         },
         "packmol": {"executable": existing_executable(packmol) or shutil.which("packmol")},
         "lammps": {"executable": existing_executable(lammps) or shutil.which("lmp") or shutil.which("lammps")},
-        "obabel": {"executable": shutil.which("obabel")},
+        "obabel": {"executable": existing_executable(openbabel) or shutil.which("obabel")},
     }
     for module in ["numpy", "pandas", "yaml", "ase", "MDAnalysis", "rdkit", "openbabel"]:
         try:
