@@ -10,7 +10,7 @@ import pandas as pd
 
 def _root(config: Dict[str, Any] | None = None) -> Path:
     if config and "paths" in config and "root" in config["paths"]:
-        return Path(config["paths"]["root"])
+        return Path(config["paths"]["root"]).expanduser()
     return Path(__file__).resolve().parents[3]
 
 

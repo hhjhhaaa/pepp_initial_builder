@@ -12,6 +12,7 @@ def tmp_cfg(tmp_path):
 
 def test_porems_unavailable_does_not_fake_model(tmp_path):
     cfg = tmp_cfg(tmp_path)
+    cfg["porems"]["enabled"] = False
     cfg["tools"]["porems_search_roots"] = [str(tmp_path / "none")]
     cfg["tools"]["porems_path_hint"] = str(tmp_path / "none")
     manifest = build_porems_pores(cfg, "tiny")

@@ -1,5 +1,5 @@
 paths:
-  root: /home/jinhao/mlff/pepp_initial_builder
+  root: .
   systems_dir: data/polymer/systems
   matrix_dir: data/polymer/matrix
   exports_dir: data/exports
@@ -34,9 +34,9 @@ tools:
   fallback_builder: packmol
   allow_python_chain_builder: true
   allow_lammps_cleanup: true
-  known_emc_root: /home/jinhao/software/EMC
-  known_packmol_executable: /home/jinhao/software/packmol/packmol-21.1.1/packmol
-  known_lammps_executable: /home/jinhao/software/lammps/build-cmake/lmp
+  known_emc_root:
+  known_packmol_executable:
+  known_lammps_executable:
 builder:
   representation: all_atom_C_H
   chain_conformation: random_walk_carbon_skeleton

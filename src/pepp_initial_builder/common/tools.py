@@ -10,12 +10,40 @@ from typing import Any, Dict
 from pepp_initial_builder.common.paths import ensure_dirs, project_root
 
 
+def configured_path(value: object) -> Path | None:
+    if value in {None, ""}:
+        return None
+    return Path(str(value)).expanduser()
+
+
+def existing_executable(path: Path | None) -> str | None:
+    return str(path) if path and path.exists() else None
+
+
 def discover_tools(config: Dict[str, Any]) -> Dict[str, Any]:
     tools = config.get("tools", {})
-    emc = Path(tools.get("known_emc_root", "/home/jinhao/software/EMC"))
-    packmol = Path(tools.get("known_packmol_executable", "/home/jinhao/software/packmol/packmol-21.1.1/packmol"))
-    lammps = Path(tools.get("known_lammps_executable", "/home/jinhao/software/lammps/build-cmake/lmp"))
-    report = {"python_executable": sys.executable, "python_version": sys.version.split()[0], "conda_environment": os.environ.get("CONDA_DEFAULT_ENV", ""), "python_modules": {}, "emc": {"root": str(emc) if emc.exists() else None, "executable": str(emc / "bin/emc_linux_x86_64") if (emc / "bin/emc_linux_x86_64").exists() else shutil.which("emc"), "emc_pl": str(emc / "scripts/emc.pl") if (emc / "scripts/emc.pl").exists() else shutil.which("emc.pl"), "emc_setup": str(emc / "scripts/emc_setup.pl") if (emc / "scripts/emc_setup.pl").exists() else shutil.which("emc_setup"), "scripts_dir": str(emc / "scripts") if (emc / "scripts").exists() else None, "examples_dir": str(emc / "examples") if (emc / "examples").exists() else None, "field_dir": str(emc / "field") if (emc / "field").exists() else None, "preferred_fields_found": []}, "packmol": {"executable": str(packmol) if packmol.exists() else shutil.which("packmol")}, "lammps": {"executable": str(lammps) if lammps.exists() else shutil.which("lmp") or shutil.which("lammps")}, "obabel": {"executable": shutil.which("obabel")}}
+    emc = configured_path(tools.get("known_emc_root"))
+    packmol = configured_path(tools.get("known_packmol_executable"))
+    lammps = configured_path(tools.get("known_lammps_executable"))
+    report = {
+        "python_executable": sys.executable,
+        "python_version": sys.version.split()[0],
+        "conda_environment": os.environ.get("CONDA_DEFAULT_ENV", ""),
+        "python_modules": {},
+        "emc": {
+            "root": str(emc) if emc and emc.exists() else None,
+            "executable": existing_executable(emc / "bin/emc_linux_x86_64" if emc else None) or shutil.which("emc"),
+            "emc_pl": existing_executable(emc / "scripts/emc.pl" if emc else None) or shutil.which("emc.pl"),
+            "emc_setup": existing_executable(emc / "scripts/emc_setup.pl" if emc else None) or shutil.which("emc_setup"),
+            "scripts_dir": str(emc / "scripts") if emc and (emc / "scripts").exists() else None,
+            "examples_dir": str(emc / "examples") if emc and (emc / "examples").exists() else None,
+            "field_dir": str(emc / "field") if emc and (emc / "field").exists() else None,
+            "preferred_fields_found": [],
+        },
+        "packmol": {"executable": existing_executable(packmol) or shutil.which("packmol")},
+        "lammps": {"executable": existing_executable(lammps) or shutil.which("lmp") or shutil.which("lammps")},
+        "obabel": {"executable": shutil.which("obabel")},
+    }
     for module in ["numpy", "pandas", "yaml", "ase", "MDAnalysis", "rdkit", "openbabel"]:
         try:
             __import__(module)

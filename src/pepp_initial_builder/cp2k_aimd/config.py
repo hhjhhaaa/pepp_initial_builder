@@ -8,12 +8,22 @@ import yaml
 
 
 def load_cp2k_config(path: str | Path) -> Dict[str, Any]:
+    path = Path(path)
     with open(path, "r", encoding="utf-8") as handle:
-        return yaml.safe_load(handle)
+        config = yaml.safe_load(handle)
+    if isinstance(config, dict) and isinstance(config.get("paths"), dict):
+        root_value = config["paths"].get("root")
+        if root_value in {None, "", "."}:
+            config["paths"]["root"] = str(path.resolve().parents[1])
+        else:
+            config["paths"]["root"] = str(Path(str(root_value)).expanduser())
+        if config["paths"].get("lmp_proj_root"):
+            config["paths"]["lmp_proj_root"] = str(Path(str(config["paths"]["lmp_proj_root"])).expanduser())
+    return config
 
 
 def root(config: Dict[str, Any]) -> Path:
-    return Path(config["paths"]["root"])
+    return Path(config["paths"]["root"]).expanduser()
 
 
 def p(config: Dict[str, Any], key: str) -> Path:

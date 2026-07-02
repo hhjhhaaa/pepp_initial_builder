@@ -69,11 +69,14 @@ def scan_porems_python_packages(search_roots: Sequence[Path]) -> List[Dict[str, 
 
 def discover_porems(config: Dict[str, Any]) -> Dict[str, Any]:
     ensure_pore_dirs(config)
+    if config.get("porems", {}).get("enabled") is False:
+        return {"available": False, "source": "disabled_by_config", "executable": None, "python_package_found": False, "python_package_error": "disabled_by_config", "version": None, "python_executable": None, "discovered_python_packages": [], "candidates": [], "examples": [], "templates": [], "manual_user_input_allowed": True, "manual_user_input_note": "Place extxyz/pdb pore models under data/pore/porems_models/manual_* and rerun builders."}
     tools = config["tools"]
-    hint = Path(tools.get("porems_path_hint", ""))
-    roots = [Path(x) for x in tools.get("porems_search_roots", [])]
+    hint_value = tools.get("porems_path_hint")
+    hint = Path(str(hint_value)).expanduser() if hint_value else None
+    roots = [Path(str(x)).expanduser() for x in tools.get("porems_search_roots", [])]
     candidates: List[str] = []
-    if hint.exists():
+    if hint and hint.exists():
         candidates.append(str(hint))
     for exe in ["porems", "PoreMS", "porems.py"]:
         found = shutil.which(exe)

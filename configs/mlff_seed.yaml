@@ -1,6 +1,6 @@
 paths:
-  root: /home/jinhao/mlff/pepp_initial_builder
-  bulk_initial_manifest: /home/jinhao/mlff/pepp_initial_builder/data/exports/polymer_initial_manifest.csv
+  root: .
+  bulk_initial_manifest: data/exports/polymer_initial_manifest.csv
   porems_models_dir: data/pore/porems_models
   silica_patches_dir: data/pore/silica_patches
   aimd_local_structures_dir: data/cp2k_aimd/seed_structures
@@ -9,9 +9,9 @@ paths:
   logs_dir: outputs/logs
   figures_dir: outputs/figures
 tools:
-  porems_search_roots: [/home/jinhao, /home/jinhao/software, /home/jinhao/mlff]
-  porems_path_hint: /home/jinhao/software/PoreMS
-  packmol_path_hint: /home/jinhao/software/packmol/packmol-21.1.1/packmol
+  porems_search_roots: [., ~/software, ~]
+  porems_path_hint:
+  packmol_path_hint:
   ase_required: true
   cp2k_not_required_here: true
   mlff_not_required_here: true

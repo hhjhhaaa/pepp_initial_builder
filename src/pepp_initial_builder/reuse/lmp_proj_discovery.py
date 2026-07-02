@@ -14,11 +14,11 @@ def load_yaml(path: str | Path) -> Dict[str, Any]:
 
 
 def root(config: Dict[str, Any]) -> Path:
-    return Path(config["paths"]["root"])
+    return Path(config["paths"]["root"]).expanduser()
 
 
 def lmp_proj_root(config: Dict[str, Any]) -> Path:
-    return Path(config["paths"].get("lmp_proj_root", "/home/jinhao/lmp-proj"))
+    return Path(config["paths"].get("lmp_proj_root", "~/lmp-proj")).expanduser()
 
 
 def lmp_proj_code_root(config: Dict[str, Any]) -> Path:

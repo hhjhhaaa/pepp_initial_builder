@@ -5,7 +5,7 @@ from typing import Any, Dict
 
 
 def project_root(config: Dict[str, Any]) -> Path:
-    return Path(config["paths"]["root"])
+    return Path(config["paths"]["root"]).expanduser()
 
 
 def ensure_dirs(config: Dict[str, Any]) -> None:

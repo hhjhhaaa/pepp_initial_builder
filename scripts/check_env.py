@@ -13,6 +13,9 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from pepp_initial_builder.common.config import load_config
+from pepp_initial_builder.cp2k_aimd.config import load_cp2k_config
+
 
 def _module_status(name: str) -> str:
     try:
@@ -25,8 +28,9 @@ def _module_status(name: str) -> str:
 def _load_yaml(path: Path) -> dict:
     if not path.exists():
         return {}
-    with path.open("r", encoding="utf-8") as handle:
-        return yaml.safe_load(handle) or {}
+    if path.name == "cp2k_aimd.yaml":
+        return load_cp2k_config(path)
+    return load_config(path)
 
 
 def main() -> None:
@@ -70,8 +74,8 @@ def main() -> None:
         },
         "hpc_cp2k_module_placeholder": hpc.get("cp2k_module_placeholder", "__SET_CP2K_MODULE_ON_HPC__"),
         "lmp_proj": {
-            "path": cp2k_paths.get("lmp_proj_root", "/home/jinhao/lmp-proj"),
-            "exists": Path(cp2k_paths.get("lmp_proj_root", "/home/jinhao/lmp-proj")).exists(),
+            "path": str(Path(cp2k_paths.get("lmp_proj_root", "~/lmp-proj")).expanduser()),
+            "exists": Path(cp2k_paths.get("lmp_proj_root", "~/lmp-proj")).expanduser().exists(),
         },
     }
     print(json.dumps(report, indent=2))

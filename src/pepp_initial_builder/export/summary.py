@@ -6,7 +6,7 @@ from typing import Any, Dict
 
 
 def summarize_outputs(config: Dict[str, Any] | None = None) -> Path:
-    root = Path(config["paths"]["root"]) if config and "paths" in config else Path(__file__).resolve().parents[3]
+    root = Path(config["paths"]["root"]).expanduser() if config and "paths" in config else Path(__file__).resolve().parents[3]
     exports = sorted((root / "data" / "exports").glob("*manifest*"))
     reports = sorted((root / "outputs" / "logs").glob("*report*"))
     validations = sorted((root / "outputs" / "logs").glob("*validation*"))
