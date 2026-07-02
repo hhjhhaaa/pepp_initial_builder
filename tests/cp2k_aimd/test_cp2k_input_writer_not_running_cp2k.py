@@ -23,4 +23,8 @@ def test_hpc_job_has_module_placeholder(tmp_path):
     assert manifest.exists()
     assert "module purge" in text
     assert "module load __SET_CP2K_MODULE_ON_HPC__" in text
+    assert '# export CP2K_DATA_DIR="__SET_CP2K_DATA_DIR_ON_HPC__"' in text
     assert "CP2K_CMD=${CP2K_CMD:-cp2k.psmp}" in text
+    assert (tmp_path / "slurm" / "submit_cp2k_sp_tiny.sh").exists()
+    assert (tmp_path / "slurm" / "submit_cp2k_short_aimd_tiny.sh").exists()
+    assert (tmp_path / "slurm" / "submit_cp2k_seed_tiny.sh").exists()

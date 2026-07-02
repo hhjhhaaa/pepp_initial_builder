@@ -48,6 +48,12 @@ full_pore_seed_matrix:
   max_atoms_tiny: 20000
   max_atoms_pilot: 80000
   max_atoms_main: 150000
+full_pore_seed:
+  wall_buffer_A: 3.0
+  end_buffer_A: 3.0
+  max_initial_overlap_retries: 2000
+  min_polymer_inside_pore_fraction: 0.95
+  min_polymer_silica_distance_A: 1.6
 packing:
   use_packmol_for_polymer_placement: true
   min_heavy_atom_distance_A: 1.8

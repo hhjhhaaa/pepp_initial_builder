@@ -43,3 +43,139 @@ def test_dataset_builder_refuses_fake_frames(tmp_path):
     summary = (tmp_path / "dataset" / "dataset_summary.yaml").read_text(encoding="utf-8")
     assert "insufficient_real_cp2k_frames" in summary
     assert "usable_for_mlff_training: false" in summary
+
+
+def _write_coords(path):
+    path.write_text(
+        '2\nLattice="12 0 0 0 12 0 0 0 12" Properties=species:S:1:pos:R:3 pbc="T T T"\n'
+        "Si 5.0 5.0 5.0\n"
+        "O 6.6 5.0 5.0\n",
+        encoding="utf-8",
+    )
+
+
+def _write_xyz_frames(path, comments_and_rows):
+    text = []
+    for comment, rows in comments_and_rows:
+        text.append(str(len(rows)))
+        text.append(comment)
+        text.extend(rows)
+    path.write_text("\n".join(text) + "\n", encoding="utf-8")
+
+
+def test_parser_fixture_energy_force_units_and_provenance(tmp_path):
+    config = _config(tmp_path)
+    job_dir = tmp_path / "jobs" / "s_sp" / "sp_force"
+    job_dir.mkdir(parents=True)
+    _write_coords(job_dir / "coords.xyz")
+    (job_dir / "cp2k.out").write_text(
+        " ENERGY| Total FORCE_EVAL ( QS ) energy (a.u.):              -1.000000000000\n"
+        " PROGRAM ENDED AT 2026-07-02 00:00:00\n",
+        encoding="utf-8",
+    )
+    _write_xyz_frames(
+        job_dir / "s_sp_sp_force-frc-1.xyz",
+        [
+            (
+                "forces in Hartree/Bohr",
+                [
+                    "Si 0.010000 0.000000 0.000000",
+                    "O 0.000000 -0.020000 0.000000",
+                ],
+            )
+        ],
+    )
+    (tmp_path / "jobs" / "cp2k_label_input_manifest.csv").write_text(
+        "aimd_structure_id,family,patch_id,label_mode,cp2k_project,cp2k_run_type,status,job_dir\n"
+        f"s_sp,pe_near_silanol_wall,patch_A,sp_force,s_sp_sp_force,ENERGY_FORCE,cp2k_input_written_no_cp2k_run,{job_dir}\n",
+        encoding="utf-8",
+    )
+
+    manifest = parse_cp2k_outputs(config)
+    parsed = manifest.read_text(encoding="utf-8")
+    assert "parsed_real_cp2k_output" in parsed
+    frames = (tmp_path / "parsed" / "s_sp" / "sp_force" / "frames.extxyz").read_text(encoding="utf-8")
+    assert "energy=-27.211386245988" in frames
+    assert "forces_unit=\"eV/Angstrom\"" in frames
+    assert "aimd_seed_id=s_sp" in frames
+    assert "patch_id=patch_A" in frames
+    assert "cp2k_run_type=ENERGY_FORCE" in frames
+    summary = yaml.safe_load((tmp_path / "parsed" / "s_sp" / "sp_force" / "parse_summary.yaml").read_text(encoding="utf-8"))
+    assert summary["detected_cp2k_out"].endswith("cp2k.out")
+    assert summary["detected_force_file"].endswith("s_sp_sp_force-frc-1.xyz")
+    assert summary["n_frames_written"] == 1
+
+
+def test_parser_fixture_md_matched_frames_and_mismatch_summary(tmp_path):
+    config = _config(tmp_path)
+    job_dir = tmp_path / "jobs" / "s_md" / "short_aimd"
+    job_dir.mkdir(parents=True)
+    _write_coords(job_dir / "coords.xyz")
+    (job_dir / "cp2k.out").write_text(" PROGRAM ENDED AT 2026-07-02 00:00:00\n", encoding="utf-8")
+    _write_xyz_frames(
+        job_dir / "s_md_short_aimd-pos-1.xyz",
+        [
+            ("pos frame 0", ["Si 5.0 5.0 5.0", "O 6.6 5.0 5.0"]),
+            ("pos frame 1", ["Si 5.1 5.0 5.0", "O 6.7 5.0 5.0"]),
+        ],
+    )
+    _write_xyz_frames(
+        job_dir / "s_md_short_aimd-frc-1.xyz",
+        [("force frame 0", ["Si 0.010000 0.000000 0.000000", "O 0.000000 0.020000 0.000000"])],
+    )
+    (job_dir / "s_md_short_aimd-1.ener").write_text(
+        "# step time kin temp pot\n"
+        "0 0.0 0.0 523.0 -2.000000\n"
+        "1 0.5 0.0 523.0 -1.900000\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "jobs" / "cp2k_label_input_manifest.csv").write_text(
+        "aimd_structure_id,family,patch_id,label_mode,cp2k_project,cp2k_run_type,status,job_dir\n"
+        f"s_md,silica_patch_only,patch_B,short_aimd,s_md_short_aimd,MD,cp2k_input_written_no_cp2k_run,{job_dir}\n",
+        encoding="utf-8",
+    )
+
+    parse_cp2k_outputs(config)
+    summary = yaml.safe_load((tmp_path / "parsed" / "s_md" / "short_aimd" / "parse_summary.yaml").read_text(encoding="utf-8"))
+    assert summary["parser_mode"] == "MD"
+    assert summary["n_position_frames"] == 2
+    assert summary["n_force_frames"] == 1
+    assert summary["n_energy_frames"] == 2
+    assert summary["n_frames_written"] == 1
+    assert summary["frame_count_mismatch"] is True
+    frames = (tmp_path / "parsed" / "s_md" / "short_aimd" / "frames.extxyz").read_text(encoding="utf-8")
+    assert frames.count("\n2\n") == 0
+    assert frames.startswith("2\n")
+    assert "source_frame_index=0" in frames
+    assert "cp2k_run_type=MD" in frames
+
+
+def test_dataset_split_keeps_same_structure_block_together(tmp_path):
+    config = _config(tmp_path)
+    config["dataset"]["min_frames_for_training"] = 2
+    config["dataset"]["train_fraction"] = 0.5
+    config["dataset"]["val_fraction"] = 0.25
+    parsed = tmp_path / "parsed"
+    parsed.mkdir()
+    for name in ["s1_sp", "s1_md", "s2_sp", "s2_md"]:
+        (parsed / f"{name}.extxyz").write_text(
+            f'1\nProperties=species:S:1:pos:R:3 source_job_dir="{name}" aimd_seed_id={name.split("_")[0]}\nH 0 0 0\n',
+            encoding="utf-8",
+        )
+    (parsed / "cp2k_parsed_manifest.csv").write_text(
+        "aimd_structure_id,family,patch_id,label_mode,status,usable_frame_count,failure_reason,frames_extxyz_path\n"
+        f"s1,pe_near_silanol_wall,patch_A,sp_force,parsed_real_cp2k_output,1,,{parsed / 's1_sp.extxyz'}\n"
+        f"s1,pe_near_silanol_wall,patch_A,short_aimd,parsed_real_cp2k_output,1,,{parsed / 's1_md.extxyz'}\n"
+        f"s2,pe_near_silanol_wall,patch_B,sp_force,parsed_real_cp2k_output,1,,{parsed / 's2_sp.extxyz'}\n"
+        f"s2,pe_near_silanol_wall,patch_B,short_aimd,parsed_real_cp2k_output,1,,{parsed / 's2_md.extxyz'}\n",
+        encoding="utf-8",
+    )
+
+    build_aimd_dataset(config)
+    train = (tmp_path / "dataset" / "train.extxyz").read_text(encoding="utf-8")
+    val = (tmp_path / "dataset" / "val.extxyz").read_text(encoding="utf-8")
+    assert "source_job_dir=\"s1_sp\"" in train
+    assert "source_job_dir=\"s1_md\"" in train
+    assert "source_job_dir=\"s1_sp\"" not in val
+    assert "source_job_dir=\"s2_sp\"" in val
+    assert "source_job_dir=\"s2_md\"" in val

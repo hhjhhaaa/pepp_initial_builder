@@ -83,3 +83,8 @@ dataset:
   tiny_max_structures: 4
   pilot_max_structures: 40
   main_max_structures: 1000000
+units:
+  output_energy: eV
+  output_forces: eV_per_A
+  cp2k_energy_hartree_to_eV: 27.211386245988
+  cp2k_force_hartree_per_bohr_to_eV_per_A: 51.422067476

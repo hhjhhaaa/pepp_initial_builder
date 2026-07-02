@@ -452,6 +452,185 @@ def _toy_patch() -> Tuple[List[str], np.ndarray, Tuple[float, float, float]]:
     return elems, coords, (24.0, 24.0, 24.0)
 
 
+def _mlff_cell_min(config: Dict[str, Any]) -> float:
+    assumptions = config.get("mlff_assumptions", {})
+    cutoff = float(assumptions.get("planned_mlff_cutoff_A", 5.0))
+    multiple = float(assumptions.get("min_cell_multiple_of_cutoff", 2.0))
+    absolute = float(assumptions.get("min_cell_length_A", 12.0))
+    return max(absolute, multiple * cutoff)
+
+
+def _vec3_text(values: Sequence[float]) -> str:
+    return " ".join(f"{float(v):.8f}" for v in values)
+
+
+def _pore_center(box: Tuple[float, float, float]) -> np.ndarray:
+    return np.array([box[0] / 2.0, box[1] / 2.0, box[2] / 2.0], dtype=float)
+
+
+def _anchor_indices(coords: np.ndarray, center: np.ndarray, patch_type: str, radius: float, max_atoms: int) -> np.ndarray:
+    xy = coords[:, :2] - center[:2]
+    radial = np.linalg.norm(xy, axis=1)
+    order = np.argsort(radial)
+    anchor = order[-1] if "concave" in patch_type or "wall" in patch_type or len(order) else 0
+    if "flat" in patch_type and len(order):
+        anchor = order[len(order) // 2]
+    distances = np.linalg.norm(coords - coords[anchor], axis=1)
+    keep = np.where(distances <= radius)[0]
+    if len(keep) < min(max_atoms, len(coords)):
+        keep = np.argsort(distances)[: min(max_atoms, len(coords))]
+    return np.array(sorted(keep[: min(max_atoms, len(keep))]), dtype=int)
+
+
+def _normal_metadata(coords: np.ndarray, box: Tuple[float, float, float], keep: np.ndarray) -> Dict[str, Any]:
+    center = _pore_center(box)
+    patch_center = coords[keep].mean(axis=0) if len(keep) else center
+    radial = np.array([patch_center[0] - center[0], patch_center[1] - center[1], 0.0], dtype=float)
+    norm = float(np.linalg.norm(radial))
+    if norm > 1.0e-8:
+        outward = radial / norm
+        status = "box_center_radial"
+    else:
+        outward = np.array([1.0, 0.0, 0.0], dtype=float)
+        radial = outward.copy()
+        status = "weak_default_box_center"
+    inward = -outward
+    return {
+        "pore_axis": "z",
+        "pore_center_xyz": _vec3_text(center),
+        "radial_vector_xyz": _vec3_text(radial),
+        "inward_normal_xyz": _vec3_text(inward),
+        "normal_definition_status": status,
+        "patch_center_xyz": _vec3_text(patch_center),
+        "patch_center_array": patch_center,
+        "inward_normal_array": inward,
+    }
+
+
+def _surface_classification(elems: Sequence[str], coords: np.ndarray, config: Dict[str, Any]) -> Dict[str, Any]:
+    o_idx = [i for i, el in enumerate(elems) if el == "O"]
+    h_idx = [i for i, el in enumerate(elems) if el == "H"]
+    si_idx = [i for i, el in enumerate(elems) if el == "Si"]
+    n_silanol = 0
+    n_siloxane = 0
+    for oi in o_idx:
+        oh = any(float(np.linalg.norm(coords[oi] - coords[hi])) <= 1.25 for hi in h_idx)
+        si_neighbors = sum(1 for si in si_idx if float(np.linalg.norm(coords[oi] - coords[si])) <= 2.1)
+        if oh:
+            n_silanol += 1
+        if not oh and si_neighbors >= 2:
+            n_siloxane += 1
+    n_o = len(o_idx)
+    min_oh = int(config.get("silica_patch", {}).get("min_surface_oh_count_for_silanol_rich", 2))
+    oh_ratio = n_silanol / n_o if n_o else 0.0
+    silox_ratio = n_siloxane / n_o if n_o else 0.0
+    if n_silanol >= min_oh and n_siloxane >= min_oh:
+        surface_class = "mixed_oh"
+    elif n_silanol >= min_oh and oh_ratio >= silox_ratio:
+        surface_class = "silanol_rich"
+    elif n_siloxane > n_silanol:
+        surface_class = "siloxane_rich"
+    else:
+        surface_class = "mixed_oh"
+    confidence = "high" if n_o >= 12 and (n_silanol or n_siloxane) else "medium" if n_o >= 4 else "low"
+    return {
+        "surface_class": surface_class,
+        "surface_classification_method": "distance_based_heuristic",
+        "classification_confidence": confidence,
+        "n_silanol_oh": n_silanol,
+        "n_siloxane_o": n_siloxane,
+        "n_surface_si": len(si_idx),
+        "n_surface_o": n_o,
+        "local_oh_count": n_silanol,
+    }
+
+
+def _rebuild_local_cell(
+    coords: np.ndarray,
+    box: Tuple[float, float, float],
+    config: Dict[str, Any],
+) -> Tuple[np.ndarray, Tuple[float, float, float], Dict[str, Any]]:
+    patch_cfg = config.get("silica_patch", {})
+    min_cell = _mlff_cell_min(config)
+    vacuum = float(patch_cfg.get("vacuum_buffer_A", 5.0))
+    if len(coords):
+        mins = coords.min(axis=0)
+        maxs = coords.max(axis=0)
+        extent = maxs - mins
+        local_box = tuple(float(max(min_cell, extent[i] + 2.0 * vacuum)) for i in range(3))
+        centroid = coords.mean(axis=0)
+        target = np.array([local_box[0] / 2.0, local_box[1] / 2.0, local_box[2] / 2.0])
+        shift = target - centroid
+        shifted = coords + shift
+        status = "centered_on_local_cell_center"
+    else:
+        local_box = (min_cell, min_cell, min_cell)
+        shift = np.zeros(3)
+        shifted = coords
+        status = "no_atoms_to_center"
+    meta = {
+        "cell_source": "rebuilt_local_patch_cell" if patch_cfg.get("rebuild_local_cell", True) else "original_pore_cell",
+        "original_pore_cell_lx_A": float(box[0]),
+        "original_pore_cell_ly_A": float(box[1]),
+        "original_pore_cell_lz_A": float(box[2]),
+        "coordinate_centering_status": status,
+        "local_cell_origin_shift_xyz": _vec3_text(shift),
+    }
+    return shifted, local_box, meta
+
+
+def _cell_failure_reason(box: Tuple[float, float, float], config: Dict[str, Any]) -> str:
+    min_cell = _mlff_cell_min(config)
+    return "" if all(float(x) >= min_cell for x in box) else "cell_smaller_than_2x_mlff_cutoff"
+
+
+def _heavy_min_distance(elems: Sequence[str], coords: np.ndarray, left_count: int) -> float:
+    left = [i for i in range(left_count) if elems[i] != "H"]
+    right = [i for i in range(left_count, len(elems)) if elems[i] != "H"]
+    if not left or not right:
+        return float("inf")
+    return min(float(np.linalg.norm(coords[i] - coords[j])) for i in left for j in right)
+
+
+def _normal_from_row(row: Any) -> np.ndarray:
+    text = str(row.get("inward_normal_xyz", "-1 0 0"))
+    try:
+        values = np.array([float(x) for x in text.split()[:3]], dtype=float)
+    except Exception:
+        values = np.array([-1.0, 0.0, 0.0], dtype=float)
+    norm = float(np.linalg.norm(values))
+    return values / norm if norm > 1.0e-8 else np.array([-1.0, 0.0, 0.0], dtype=float)
+
+
+def _estimate_pore_radius_A(pore_row: Any, box: Tuple[float, float, float], coords: np.ndarray) -> float:
+    try:
+        diameter_nm = float(pore_row.get("pore_diameter_nm", ""))
+        if diameter_nm > 0:
+            return diameter_nm * 10.0 / 2.0
+    except Exception:
+        pass
+    center = _pore_center(box)
+    radial = np.linalg.norm(coords[:, :2] - center[:2], axis=1) if len(coords) else np.array([min(box[:2]) / 2.0])
+    return max(3.0, float(np.percentile(radial, 80)))
+
+
+def _inside_pore_fraction(coords: np.ndarray, box: Tuple[float, float, float], radius: float, wall_buffer: float, end_buffer: float) -> float:
+    if len(coords) == 0:
+        return 0.0
+    center = _pore_center(box)
+    radial = np.linalg.norm(coords[:, :2] - center[:2], axis=1)
+    inside = (radial < max(radius - wall_buffer, 0.1)) & (coords[:, 2] > end_buffer) & (coords[:, 2] < box[2] - end_buffer)
+    return float(np.count_nonzero(inside) / len(coords))
+
+
+def _min_cross_distance(elems: Sequence[str], coords: np.ndarray, split: int) -> float:
+    left = [i for i in range(split) if elems[i] != "H"]
+    right = [i for i in range(split, len(elems)) if elems[i] != "H"]
+    if not left or not right:
+        return float("inf")
+    return min(float(np.linalg.norm(coords[i] - coords[j])) for i in left for j in right)
+
+
 def crop_silica_patches(config: Dict[str, Any], mode: str = "tiny") -> Path:
     ensure_pore_dirs(config)
     rows: List[Dict[str, Any]] = []
@@ -469,37 +648,62 @@ def crop_silica_patches(config: Dict[str, Any], mode: str = "tiny") -> Path:
             ]
         ).to_csv(outbase / "silica_patch_manifest.csv", index=False)
         return outbase / "silica_patch_manifest.csv"
-    max_atoms = int(config["silica_patch"]["max_atoms_silica_patch"])
+    patch_cfg = config["silica_patch"]
+    max_atoms = int(patch_cfg["max_atoms_silica_patch"])
+    min_silica_atoms = int(patch_cfg.get("min_silica_atoms_for_valid_patch", 40))
+    radius = float(patch_cfg.get("target_patch_radius_A", 8.0))
     for _, row in pores.iterrows():
         elems, coords, box = _read_xyz_like(Path(row["pore_model_extxyz_path"]))
-        by_elem = {el: [i for i, e in enumerate(elems) if e == el] for el in sorted(set(elems))}
-        keep_list: List[int] = []
-        for el, quota in [("H", max(1, max_atoms // 6)), ("O", max(1, max_atoms // 2)), ("Si", max_atoms)]:
-            for idx in by_elem.get(el, []):
-                if len(keep_list) >= max_atoms:
-                    break
-                if el == "Si" and len(keep_list) < max_atoms:
-                    keep_list.append(idx)
-                elif el != "Si" and sum(1 for k in keep_list if elems[k] == el) < quota:
-                    keep_list.append(idx)
-            if len(keep_list) >= max_atoms:
-                break
-        if len(keep_list) < max_atoms:
-            for idx in range(len(elems)):
-                if idx not in keep_list:
-                    keep_list.append(idx)
-                if len(keep_list) >= max_atoms:
-                    break
-        keep = np.array(sorted(keep_list[: min(max_atoms, len(keep_list))]))
-        patch_id = f"patch_{row['pore_model_id']}_001"
-        pdir = outbase / patch_id
-        pdir.mkdir(parents=True, exist_ok=True)
-        atoms = _atoms_from_elements([elems[i] for i in keep], coords[keep])
-        write_xyz(pdir / "patch.extxyz", atoms, box, ext=True)
-        write_pdb(pdir / "patch.pdb", atoms, box)
-        meta = {"patch_id": patch_id, "source_pore_model_id": row["pore_model_id"], "status": "available", "source": row["source"]}
-        (pdir / "patch_metadata.yaml").write_text(yaml.safe_dump(meta, sort_keys=False), encoding="utf-8")
-        rows.append({"patch_id": patch_id, "status": "available", "source_pore_model_id": row["pore_model_id"], "patch_extxyz_path": str(pdir / "patch.extxyz")})
+        for patch_idx, patch_type in enumerate(patch_cfg.get("patch_types", ["concave_pore_wall_patch"]), start=1):
+            keep = _anchor_indices(coords, _pore_center(box), str(patch_type), radius, max_atoms)
+            patch_elems = [elems[i] for i in keep]
+            patch_coords = coords[keep]
+            normal_meta = _normal_metadata(coords, box, keep)
+            local_coords, local_box, cell_meta = _rebuild_local_cell(patch_coords, box, config)
+            classification = _surface_classification(patch_elems, local_coords, config)
+            cell_failure = _cell_failure_reason(local_box, config)
+            silica_atoms = sum(1 for el in patch_elems if el in PORE_ELEMENTS)
+            coverage_failure = silica_atoms < min_silica_atoms
+            usable = not cell_failure and not coverage_failure
+            failure_reason = cell_failure or ("patch_too_small_or_poor_surface_coverage" if coverage_failure else "")
+            patch_id = f"patch_{row['pore_model_id']}_{patch_idx:03d}_{patch_type}"
+            pdir = outbase / patch_id
+            pdir.mkdir(parents=True, exist_ok=True)
+            atoms = _atoms_from_elements(patch_elems, local_coords)
+            write_xyz(pdir / "patch.extxyz", atoms, local_box, ext=True)
+            write_pdb(pdir / "patch.pdb", atoms, local_box)
+            meta = {
+                "patch_id": patch_id,
+                "patch_type": patch_type,
+                "source_pore_model_id": row["pore_model_id"],
+                "status": "available",
+                "source": row["source"],
+                "usable_for_cp2k_aimd": bool(usable),
+                "failure_reason": failure_reason,
+                "geometry_status": "available_geometry" if usable else "available_geometry_not_usable_for_cp2k_aimd",
+                "n_atoms": len(patch_elems),
+                "selection_radius_A": radius,
+                **{k: v for k, v in normal_meta.items() if not k.endswith("_array")},
+                **cell_meta,
+                **classification,
+            }
+            (pdir / "patch_metadata.yaml").write_text(yaml.safe_dump(meta, sort_keys=False), encoding="utf-8")
+            rows.append(
+                {
+                    "patch_id": patch_id,
+                    "patch_type": patch_type,
+                    "status": "available",
+                    "usable_for_cp2k_aimd": bool(usable),
+                    "failure_reason": failure_reason,
+                    "source_pore_model_id": row["pore_model_id"],
+                    "patch_extxyz_path": str(pdir / "patch.extxyz"),
+                    "n_atoms": len(patch_elems),
+                    "selection_radius_A": radius,
+                    **{k: v for k, v in normal_meta.items() if not k.endswith("_array")},
+                    **cell_meta,
+                    **classification,
+                }
+            )
     manifest = outbase / "silica_patch_manifest.csv"
     pd.DataFrame(rows).to_csv(manifest, index=False)
     return manifest
@@ -510,6 +714,9 @@ def _patch_rows(config: Dict[str, Any]) -> pd.DataFrame:
     if not path.exists():
         return pd.DataFrame()
     df = pd.read_csv(path)
+    if "usable_for_cp2k_aimd" in df.columns:
+        usable = df["usable_for_cp2k_aimd"].astype(str).str.lower().isin({"true", "1", "yes"})
+        return df[(df["status"].astype(str) == "available") & usable]
     return df[df["status"].astype(str) == "available"]
 
 
@@ -539,6 +746,8 @@ def build_aimd_local_structures(config: Dict[str, Any], mode: str = "tiny") -> P
                     all_elems = list(elems)
                     all_coords = [x for x in coords]
                     rng = np.random.default_rng(seed)
+                    placement_status = "silica_patch_only"
+                    min_polymer_silica_distance = float("inf")
                     if pe or pp:
                         row = {
                             "system_id": "fragment",
@@ -549,10 +758,39 @@ def build_aimd_local_structures(config: Dict[str, Any], mode: str = "tiny") -> P
                             "initial_packing_density_g_cm3": 0.5,
                         }
                         topo = build_python_topology(row)
-                        shift = np.array([0.0, 0.0, 4.0 + 0.2 * seed])
-                        for atom in topo.atoms:
+                        normal = _normal_from_row(patch)
+                        patch_center = np.array([box[0] / 2.0, box[1] / 2.0, box[2] / 2.0])
+                        distances = [float(x) for x in config["aimd_local_matrix"].get("polymer_wall_distances_A", [3.5])]
+                        distance = distances[0] if "compressed" in family else distances[min(seed - 1, len(distances) - 1)]
+                        polymer_coords = np.array([[a.x, a.y, a.z] for a in topo.atoms], dtype=float)
+                        polymer_coords -= polymer_coords.mean(axis=0)
+                        base = patch_center + normal * distance
+                        placed = polymer_coords + base + rng.normal(0, 0.03, polymer_coords.shape)
+                        min_allowed = float(config.get("packing", {}).get("min_heavy_atom_distance_A", 1.6))
+                        for attempt in range(40):
+                            trial_coords = np.vstack([np.array(all_coords, dtype=float), placed])
+                            trial_elems = all_elems + [a.element for a in topo.atoms]
+                            min_polymer_silica_distance = _heavy_min_distance(trial_elems, trial_coords, len(all_elems))
+                            if min_polymer_silica_distance >= min_allowed:
+                                placement_status = "placed_along_inward_normal"
+                                break
+                            placed = placed + normal * 0.25
+                        if placement_status != "placed_along_inward_normal":
+                            rows.append(
+                                {
+                                    "aimd_structure_id": sid,
+                                    "status": "skipped_overlap_unresolved",
+                                    "source_patch_id": patch["patch_id"],
+                                    "family": family,
+                                    "extxyz_path": "",
+                                    "min_polymer_silica_distance_A": min_polymer_silica_distance,
+                                }
+                            )
+                            made += 1
+                            continue
+                        for atom, xyz in zip(topo.atoms, placed):
                             all_elems.append(atom.element)
-                            all_coords.append(np.array([atom.x, atom.y, atom.z]) + shift + rng.normal(0, 0.05, 3))
+                            all_coords.append(xyz)
                     atoms = _atoms_from_elements(all_elems, np.array(all_coords), 0)
                     write_xyz(sdir / "structure.extxyz", atoms, box, ext=True)
                     write_pdb(sdir / "structure.pdb", atoms, box)
@@ -562,14 +800,32 @@ def build_aimd_local_structures(config: Dict[str, Any], mode: str = "tiny") -> P
                                 "aimd_structure_id": sid,
                                 "family": family,
                                 "source_patch_id": patch["patch_id"],
+                                "patch_type": patch.get("patch_type", ""),
                                 "status": "available",
+                                "placement_status": placement_status,
+                                "placement_direction": "inward_normal",
+                                "inward_normal_xyz": patch.get("inward_normal_xyz", ""),
+                                "min_polymer_silica_distance_A": min_polymer_silica_distance if math.isfinite(min_polymer_silica_distance) else None,
                                 "purpose": "aimd_local_training_structure_only_no_cp2k_run",
                             },
                             sort_keys=False,
                         ),
                         encoding="utf-8",
                     )
-                    rows.append({"aimd_structure_id": sid, "status": "available", "source_patch_id": patch["patch_id"], "family": family, "extxyz_path": str(sdir / "structure.extxyz")})
+                    rows.append(
+                        {
+                            "aimd_structure_id": sid,
+                            "status": "available",
+                            "source_patch_id": patch["patch_id"],
+                            "patch_id": patch["patch_id"],
+                            "patch_type": patch.get("patch_type", ""),
+                            "family": family,
+                            "extxyz_path": str(sdir / "structure.extxyz"),
+                            "placement_status": placement_status,
+                            "inward_normal_xyz": patch.get("inward_normal_xyz", ""),
+                            "min_polymer_silica_distance_A": min_polymer_silica_distance if math.isfinite(min_polymer_silica_distance) else "",
+                        }
+                    )
                     made += 1
                 if made >= maxn:
                     break
@@ -590,6 +846,12 @@ def build_full_pore_seed_structures(config: Dict[str, Any], mode: str = "tiny") 
         made = 0
         for _, pore in pores.iterrows():
             elems, coords, box = _read_xyz_like(Path(pore["pore_model_extxyz_path"]))
+            seed_cfg = config.get("full_pore_seed", {})
+            wall_buffer = float(seed_cfg.get("wall_buffer_A", 3.0))
+            end_buffer = float(seed_cfg.get("end_buffer_A", 3.0))
+            min_inside = float(seed_cfg.get("min_polymer_inside_pore_fraction", 0.95))
+            min_silica = float(seed_cfg.get("min_polymer_silica_distance_A", 1.6))
+            pore_radius = _estimate_pore_radius_A(pore, box, coords)
             for pe, pp in config["full_pore_seed_matrix"]["pe_pp_compositions"]:
                 if made >= maxn:
                     break
@@ -608,20 +870,72 @@ def build_full_pore_seed_structures(config: Dict[str, Any], mode: str = "tiny") 
                 topo = build_python_topology(row)
                 all_elems = list(elems)
                 all_coords = [x for x in coords]
+                polymer_raw = np.array([[atom.x, atom.y, atom.z] for atom in topo.atoms], dtype=float)
+                polymer_raw -= polymer_raw.mean(axis=0)
+                radial = np.linalg.norm(polymer_raw[:, :2], axis=1)
+                allowed_radius = max(pore_radius - wall_buffer, 0.5)
+                max_radial = max(float(radial.max()), 1.0e-8)
+                if max_radial > allowed_radius:
+                    polymer_raw[:, :2] *= allowed_radius / max_radial * 0.95
+                z_span = float(polymer_raw[:, 2].max() - polymer_raw[:, 2].min()) if len(polymer_raw) else 0.0
+                allowed_z = max(box[2] - 2.0 * end_buffer, 1.0)
+                if z_span > allowed_z:
+                    polymer_raw[:, 2] *= allowed_z / z_span * 0.95
+                center = _pore_center(box)
+                placed_polymer = polymer_raw + center
                 for atom in topo.atoms:
                     all_elems.append(atom.element)
-                    all_coords.append(np.array([atom.x, atom.y, atom.z]) + np.array([box[0] / 2, box[1] / 2, box[2] / 2]))
+                for xyz in placed_polymer:
+                    all_coords.append(xyz)
+                combined_coords = np.array(all_coords, dtype=float)
+                inside_fraction = _inside_pore_fraction(placed_polymer, box, pore_radius, wall_buffer, end_buffer)
+                min_distance = _min_cross_distance(all_elems, combined_coords, len(elems))
+                usable = inside_fraction >= min_inside and min_distance >= min_silica
+                packing_status = "packed_inside_pore" if usable else "polymer_not_inside_pore_or_overlap"
                 atoms = _atoms_from_elements(all_elems, np.array(all_coords), 0)
                 write_xyz(sdir / "seed.extxyz", atoms, box, ext=True)
                 write_pdb(sdir / "seed.pdb", atoms, box)
+                relaxation = {
+                    "lammps_relax_performed": False,
+                    "relax_is_training_data": False,
+                    "relax_is_production_md": False,
+                    "mlff_start_structure_kind": "raw_full_pore_seed",
+                    "mlff_start_extxyz_path": str(sdir / "seed.extxyz"),
+                }
                 (sdir / "metadata.yaml").write_text(
                     yaml.safe_dump(
-                        {"full_pore_seed_id": sid, "status": "available", "source_pore_model_id": pore["pore_model_id"], "purpose": "mlff_exploration_seed_only_no_mlff_run"},
+                        {
+                            "full_pore_seed_id": sid,
+                            "status": "available",
+                            "source_pore_model_id": pore["pore_model_id"],
+                            "purpose": "mlff_exploration_seed_only_no_mlff_run",
+                            "packing_method": "deterministic_cylindrical_sampler",
+                            "packing_status": packing_status,
+                            "usable_for_mlff_start": bool(usable),
+                            "failure_reason": "" if usable else "polymer_not_inside_pore_or_overlap",
+                            "polymer_inside_pore_fraction": inside_fraction,
+                            "min_polymer_silica_distance_A": min_distance,
+                            "relaxation": relaxation,
+                        },
                         sort_keys=False,
                     ),
                     encoding="utf-8",
                 )
-                rows.append({"full_pore_seed_id": sid, "status": "available", "source_pore_model_id": pore["pore_model_id"], "extxyz_path": str(sdir / "seed.extxyz")})
+                rows.append(
+                    {
+                        "full_pore_seed_id": sid,
+                        "status": "available",
+                        "source_pore_model_id": pore["pore_model_id"],
+                        "extxyz_path": str(sdir / "seed.extxyz"),
+                        "polymer_inside_pore_fraction": inside_fraction,
+                        "min_polymer_silica_distance_A": min_distance,
+                        "packing_method": "deterministic_cylindrical_sampler",
+                        "packing_status": packing_status,
+                        "usable_for_mlff_start": bool(usable),
+                        "failure_reason": "" if usable else "polymer_not_inside_pore_or_overlap",
+                        "mlff_start_structure_kind": "raw_full_pore_seed",
+                    }
+                )
                 made += 1
     manifest = outbase / "full_pore_seed_manifest.csv"
     pd.DataFrame(rows).to_csv(manifest, index=False)

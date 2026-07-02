@@ -82,6 +82,12 @@ def _cfg(tmp_path: Path) -> dict:
             "require_energy": True,
             "require_forces": True,
         },
+        "units": {
+            "output_energy": "eV",
+            "output_forces": "eV_per_A",
+            "cp2k_energy_hartree_to_eV": 27.211386245988,
+            "cp2k_force_hartree_per_bohr_to_eV_per_A": 51.422067476,
+        },
     }
 
 
@@ -114,10 +120,21 @@ def test_cp2k_inputs_slurm_and_no_output_status(tmp_path):
     assert "RUN_TYPE ENERGY_FORCE" in text_a
     assert "RUN_TYPE MD" in text_b
     assert "DFTD3(BJ)" in text_a
+    assert "&CELL" in text_a
+    assert "ABC 10.0000000000 10.0000000000 10.0000000000" in text_a
+    assert "@INCLUDE coords.inc" in text_a
+    for element in ["C", "H", "O", "Si"]:
+        assert f"&KIND {element}" in text_a
+    assert "&MOTION" in text_b
     assert Path(input_manifest).exists()
 
     job_manifest = make_hpc_cp2k_jobs(cfg, "tiny")
-    assert "__SET_CP2K_MODULE_ON_HPC__" in (tmp_path / "outputs/jobs/run_cp2k_sp_array.sbatch").read_text(encoding="utf-8")
+    sp_script = (tmp_path / "outputs/jobs/run_cp2k_sp_array.sbatch").read_text(encoding="utf-8")
+    assert "__SET_CP2K_MODULE_ON_HPC__" in sp_script
+    assert '# export CP2K_DATA_DIR="__SET_CP2K_DATA_DIR_ON_HPC__"' in sp_script
+    assert (tmp_path / "outputs/jobs/submit_cp2k_sp_tiny.sh").exists()
+    assert (tmp_path / "outputs/jobs/submit_cp2k_short_aimd_tiny.sh").exists()
+    assert (tmp_path / "outputs/jobs/submit_cp2k_seed_tiny.sh").exists()
     assert Path(job_manifest).exists()
 
     parsed = parse_cp2k_outputs(cfg)

@@ -50,11 +50,19 @@ silica_patch:
     - concave_pore_wall_patch
     - silanol_rich_patch
     - siloxane_rich_patch
-  max_atoms_silica_patch: 180
+  max_atoms_silica_patch: 100
+  min_silica_atoms_for_valid_patch: 40
+  min_surface_oh_count_for_silanol_rich: 2
+  rebuild_local_cell: true
+  vacuum_buffer_A: 5.0
   target_patch_radius_A: 8.0
   add_boundary_hydroxyls: true
   reject_dangling_si: true
   reject_dangling_o: true
+mlff_assumptions:
+  planned_mlff_cutoff_A: 5.0
+  min_cell_multiple_of_cutoff: 2.0
+  min_cell_length_A: 12.0
 
 polymer_fragments:
   pe_backbone_lengths: [8, 12, 20]
@@ -107,6 +115,12 @@ full_pore_seed_matrix:
   max_atoms_tiny: 20000
   max_atoms_pilot: 80000
   max_atoms_main: 150000
+full_pore_seed:
+  wall_buffer_A: 3.0
+  end_buffer_A: 3.0
+  max_initial_overlap_retries: 2000
+  min_polymer_inside_pore_fraction: 0.95
+  min_polymer_silica_distance_A: 1.6
 
 packing:
   use_packmol_for_polymer_placement: true

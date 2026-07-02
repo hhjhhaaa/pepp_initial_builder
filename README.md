@@ -84,7 +84,19 @@ CP2K is not assumed to run in local WSL. Slurm scripts contain:
 ```bash
 module purge
 module load __SET_CP2K_MODULE_ON_HPC__
+# export CP2K_DATA_DIR="__SET_CP2K_DATA_DIR_ON_HPC__"
 CP2K_CMD=${CP2K_CMD:-cp2k.psmp}
 ```
+
+Recommended HPC tiny first-run order:
+
+1. Submit only 1-3 `ENERGY_FORCE` jobs with `outputs/jobs/submit_cp2k_sp_tiny.sh` after editing the Slurm array range on the HPC side.
+2. Check each `cp2k.out`, then rsync the small outputs back and run `scripts/cp2k_aimd/parse_cp2k_outputs.py`.
+3. Submit the remaining SP jobs only after the parser reports real frames with eV energies and eV/Angstrom forces.
+4. Submit `outputs/jobs/submit_cp2k_short_aimd_tiny.sh` only after SP inputs, module loading, basis/potential lookup, normal-end detection, and parsing are confirmed.
+
+The combined `outputs/jobs/submit_cp2k_seed_tiny.sh` exists for convenience, but the split SP-then-short-AIMD path is the recommended validation route.
+
+For local AIMD patches, tiny validation is capped at `<=100` atoms. Patch cells are rebuilt as orthorhombic local cells with vacuum padding, atoms are translated near the local cell center, and `PERIODIC XYZ` is used for v0 with the padded cell so CP2K outputs stay compatible with periodic MLFF datasets. If mirror interactions become problematic in measured runs, a later version should switch these patches to a slab or cluster strategy.
 
 If no real CP2K output is present, parsing and dataset building report `not_run_no_cp2k_output`, `insufficient_real_cp2k_frames`, and `usable_for_mlff_training = false`. The repository must not fabricate CP2K outputs, AIMD trajectories, forces, energies, stress, MLFF models, or MLFF production trajectories.

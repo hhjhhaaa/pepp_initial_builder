@@ -27,11 +27,19 @@ tools:
   mlff_not_required_here: true
 silica_patch:
   patch_types: [flat_like_wall_patch, concave_pore_wall_patch, silanol_rich_patch, siloxane_rich_patch]
-  max_atoms_silica_patch: 180
+  max_atoms_silica_patch: 100
+  min_silica_atoms_for_valid_patch: 40
+  min_surface_oh_count_for_silanol_rich: 2
+  rebuild_local_cell: true
+  vacuum_buffer_A: 5.0
   target_patch_radius_A: 8.0
   add_boundary_hydroxyls: true
   reject_dangling_si: true
   reject_dangling_o: true
+mlff_assumptions:
+  planned_mlff_cutoff_A: 5.0
+  min_cell_multiple_of_cutoff: 2.0
+  min_cell_length_A: 12.0
 polymer_fragments:
   pe_backbone_lengths: [8, 12, 20]
   pp_backbone_lengths: [8, 12, 20]
@@ -119,3 +127,8 @@ dataset:
   tiny_max_structures: 4
   pilot_max_structures: 40
   main_max_structures: 1000000
+units:
+  output_energy: eV
+  output_forces: eV_per_A
+  cp2k_energy_hartree_to_eV: 27.211386245988
+  cp2k_force_hartree_per_bohr_to_eV_per_A: 51.422067476
