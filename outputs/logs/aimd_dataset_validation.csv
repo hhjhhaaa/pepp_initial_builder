@@ -1,0 +1,4 @@
+split,extxyz_path,exists,frame_count,valid
+train,,False,0,False
+val,,False,0,False
+test,,False,0,False

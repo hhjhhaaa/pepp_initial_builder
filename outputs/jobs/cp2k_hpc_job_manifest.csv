@@ -1,0 +1,3 @@
+label_mode,script_path,job_count
+sp_force,/home/jinhao/mlff/pepp_initial_builder/outputs/jobs/run_cp2k_sp_array.sbatch,1
+short_aimd,/home/jinhao/mlff/pepp_initial_builder/outputs/jobs/run_cp2k_short_aimd_array.sbatch,3

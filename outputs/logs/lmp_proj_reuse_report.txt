@@ -1,0 +1,33 @@
+lmp_proj_root: /home/jinhao/lmp-proj
+found: True
+
+found_cp2k_input_templates:
+found_slurm_templates:
+  - /home/jinhao/lmp-proj/Mesoporous_structure_generation/microcal/common/slurm.py
+found_cp2k_parsers:
+  - /home/jinhao/lmp-proj/Mesoporous_structure_generation/microcal/cp2k/import_results.py
+  - /home/jinhao/lmp-proj/Mesoporous_structure_generation/microcal/cp2k/parse.py
+  - /home/jinhao/lmp-proj/Mesoporous_structure_generation/tests/test_microcal_cp2k_import.py
+found_hpc_status_tools:
+  - /home/jinhao/lmp-proj/Mesoporous_structure_generation/microcal/aimd/submit.py
+  - /home/jinhao/lmp-proj/Mesoporous_structure_generation/microcal/common/slurm.py
+  - /home/jinhao/lmp-proj/Mesoporous_structure_generation/microcal/cp2k/submit.py
+  - /home/jinhao/lmp-proj/Mesoporous_structure_generation/microcal/mep/submit.py
+found_patch_extractors:
+  - /home/jinhao/lmp-proj/Mesoporous_structure_generation/generator/metal_load/patch_extract/__init__.py
+  - /home/jinhao/lmp-proj/Mesoporous_structure_generation/generator/metal_load/patch_extract/audit.py
+  - /home/jinhao/lmp-proj/Mesoporous_structure_generation/generator/metal_load/patch_extract/extract.py
+  - /home/jinhao/lmp-proj/Mesoporous_structure_generation/generator/metal_load/patch_extract/io_lammps.py
+  - /home/jinhao/lmp-proj/Mesoporous_structure_generation/generator/metal_load/patch_extract/model.py
+  - /home/jinhao/lmp-proj/Mesoporous_structure_generation/generator/metal_load/patch_extract/writer.py
+  - /home/jinhao/lmp-proj/Mesoporous_structure_generation/generator/metal_load/patch_pipeline.py
+
+recommended_reuse_strategy: Review lmp-proj implementations and cleanly reimplement the needed CP2K/HPC/parser behavior inside pepp_initial_builder. Do not copy the old project and do not add runtime wrappers.
+files_to_wrap:
+files_referenced_for_clean_reimplementation:
+  - /home/jinhao/lmp-proj/Mesoporous_structure_generation/microcal/common/slurm.py
+  - /home/jinhao/lmp-proj/Mesoporous_structure_generation/microcal/cp2k/parse.py
+  - /home/jinhao/lmp-proj/Mesoporous_structure_generation/microcal/aimd/parse.py
+files_not_reused_and_reason:
+  - /home/jinhao/lmp-proj/Mesoporous_structure_generation/generator/metal_load/patch_extract/extract.py: Patch extraction is discovered, but the public extractor requires a Ru/metal ClusterSelection and SurfacePatchContext from the old placement pipeline; PE/PP-silica AIMD local structures do not currently provide that contract. Keep as candidate for a later explicit context adapter.
+  - /home/jinhao/lmp-proj/Mesoporous_structure_generation/microcal/cp2k/prepare.py: CP2K input writer is GEO_OPT/Ru-catalyst oriented. The current workflow needs ENERGY_FORCE and short NVT AIMD for C/H/O/Si systems, so this module is referenced for conventions but not directly wrapped.
