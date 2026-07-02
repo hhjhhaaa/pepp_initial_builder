@@ -14,6 +14,7 @@ tools:
   packmol_path_hint:
   known_emc_root: ~/software/EMC
   known_openbabel_executable:
+  known_lammps_executable:
   ase_required: true
   cp2k_not_required_here: true
   mlff_not_required_here: true
