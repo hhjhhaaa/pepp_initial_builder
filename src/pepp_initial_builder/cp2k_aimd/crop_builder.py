@@ -78,11 +78,17 @@ def build_crop(
     metadata = {
         "aimd_seed_id": aimd_seed_id,
         "family": env.selection_reason,
+        "crop_family": env.selection_reason,
         "crop_source": "full_pore_snapshot",
         "source_stage": source["source_stage"],
         "source_full_pore_id": source["source_full_pore_id"],
         "source_snapshot_path": source["source_snapshot_path"],
         "source_frame_index": source["source_frame_index"],
+        "polymer_architecture": source.get("polymer_architecture", ""),
+        "pe_variant": source.get("pe_variant", ""),
+        "pp_variant": source.get("pp_variant", ""),
+        "composition": source.get("composition", ""),
+        "loading_mode": source.get("loading_mode", ""),
         "selection_reason": env.selection_reason,
         "what_local_environment_it_teaches": env.what_local_environment_it_teaches,
         "center_atom_id": env.center_atom_index + 1,
@@ -108,6 +114,7 @@ def build_crop(
         "coordinate_centering_status": cell_meta["coordinate_centering_status"],
         "crop_center_xyz": vec3_text(coords[env.center_atom_index]),
     }
+    metadata.update(env.metadata or {})
     (outdir / "metadata.yaml").write_text(yaml.safe_dump(metadata, sort_keys=False), encoding="utf-8")
     (outdir / "crop_summary.yaml").write_text(yaml.safe_dump(metadata, sort_keys=False), encoding="utf-8")
     return metadata

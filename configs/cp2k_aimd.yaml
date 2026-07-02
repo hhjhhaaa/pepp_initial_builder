@@ -18,6 +18,10 @@ paths:
   jobs_dir: outputs/jobs
   figures_dir: outputs/figures
   lmp_proj_root: ~/lmp-proj
+run:
+  run_id: pilot_20260703_fullpore_relaxed_cp2k
+  clean_start: true
+  forbid_reuse_existing_tiny_outputs: true
 tools:
   porems_search_roots: [., ~/software, ~]
   porems_path_hint:
@@ -47,11 +51,14 @@ polymer_fragments:
   generate_hydrogen_by_valence: true
 aimd_local_matrix:
   families:
-    - silica_patch_only
-    - pe_near_silanol_wall
-    - pp_near_silanol_wall
-    - pe_pp_mixed_near_wall
-    - compressed_polymer_wall_contact
+    - PE_HDPE_CH2_silanol_contact
+    - PE_branched_side_chain_silanol_contact
+    - PP_methyl_silanol_contact
+    - PP_methyl_siloxane_contact
+    - PP_backbone_CH_silanol_contact
+    - PE_PP_mixed_near_wall
+    - crowded_polymer_wall_contact
+    - silica_only_wall_baseline
   polymer_wall_distances_A: [2.5, 3.5, 5.0]
   polymer_orientations: [parallel, tilted, end_on, methyl_toward_wall, methyl_away_from_wall]
   temperatures_for_later_aimd_K: [523.0, 650.0]
@@ -63,12 +70,14 @@ aimd_local_matrix:
 cp2k_crop:
   source_priority: [lammps_relaxed_full_pore, lammps_exploration_snapshot]
   tiny_max_atoms: 100
-  pilot_max_atoms: 200
+  pilot_max_atoms: 160
   main_max_atoms: 300
   tiny_crop_radius_A: 6.0
-  pilot_crop_radius_A: 7.0
+  pilot_crop_radius_A: 6.5
   main_crop_radius_A: 8.0
   require_full_pore_source: true
+  patches_per_family_per_system: 3
+  require_snapshot_manifest: true
 reuse_lmp_proj:
   enabled: true
   wrap_reusable_modules: false
@@ -112,15 +121,17 @@ label_modes:
     frame_stride: 20
 hpc:
   scheduler: slurm
-  cp2k_module_placeholder: "__SET_CP2K_MODULE_ON_HPC__"
+  cp2k_module_placeholder: "cp2k-2024.1"
   cp2k_command_default: cp2k.psmp
   account:
-  partition:
+  partition: batch
   nodes: 1
   ntasks_per_node: 32
   cpus_per_task: 1
   time_sp: "04:00:00"
   time_aimd: "24:00:00"
+  sp_array_throttle: 10
+  aimd_array_throttle: 4
 dataset:
   dataset_id: pepp_silica_aimd_cp2k
   output_format: extxyz

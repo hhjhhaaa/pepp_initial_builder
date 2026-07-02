@@ -12,6 +12,10 @@ from pepp_initial_builder.cp2k_aimd.structure_writer import write_cp2k_structure
 
 
 def available_aimd_rows(config: Dict[str, Any]) -> List[Dict[str, str]]:
+    selected_short = p(config, "exports_dir") / "selected_short_aimd_manifest.csv"
+    selected_rows = [row for row in read_rows(selected_short) if row.get("status") == "selected_for_short_aimd" and row.get("source_sp_status") == "parsed_real_cp2k_output" and row.get("extxyz_path")]
+    if selected_rows:
+        return [{**row, "requested_label_mode": "short_aimd"} for row in selected_rows]
     master = p(config, "aimd_structure_manifest")
     rows = read_rows(master)
     selected = [row for row in rows if row.get("manifest_kind") == "aimd_local" and row.get("status") == "available" and row.get("extxyz_path")]
@@ -27,14 +31,51 @@ def available_aimd_rows(config: Dict[str, Any]) -> List[Dict[str, str]]:
     return [{**row, "extxyz_path": row.get("cp2k_xyz_path", "")} for row in rows if "written" in row.get("status", "") and row.get("cp2k_xyz_path")]
 
 
-def mode_names(family: str) -> List[str]:
-    if "silica_patch_only" in family:
-        return ["short_aimd"]
-    if "compressed_polymer_wall_contact" in family or "pe_pp_crowded_near_wall" in family:
-        return ["sp_force"]
-    if "distorted_surface_oh_under_polymer" in family:
-        return ["sp_force", "short_aimd"]
+def mode_names(row: Dict[str, str]) -> List[str]:
+    requested = row.get("requested_label_mode")
+    if requested:
+        return [requested]
     return ["sp_force"]
+
+
+def select_short_aimd_from_successful_sp(config: Dict[str, Any]) -> Path:
+    ensure_dirs(config)
+    parsed = [
+        row
+        for row in read_rows(p(config, "cp2k_parsed_dir") / "cp2k_parsed_manifest.csv")
+        if row.get("status") == "parsed_real_cp2k_output" and row.get("label_mode") == "sp_force"
+    ]
+    local_by_id = {row.get("aimd_structure_id", ""): row for row in read_rows(p(config, "aimd_local_manifest"))}
+    priority = [
+        "PP_methyl_silanol_contact",
+        "PP_methyl_siloxane_contact",
+        "PE_branched_side_chain_silanol_contact",
+        "PE_HDPE_CH2_silanol_contact",
+        "PE_PP_mixed_near_wall",
+        "silica_only_wall_baseline",
+    ]
+    rows: List[Dict[str, Any]] = []
+    for family in priority:
+        chosen = [row for row in parsed if row.get("family") == family][:2]
+        for row in chosen:
+            local = local_by_id.get(row.get("aimd_structure_id", ""), {})
+            rows.append(
+                {
+                    **local,
+                    "aimd_structure_id": row.get("aimd_structure_id", ""),
+                    "family": row.get("family", ""),
+                    "crop_family": local.get("crop_family", row.get("family", "")),
+                    "status": "selected_for_short_aimd",
+                    "source_sp_status": row.get("status", ""),
+                    "source_sp_frames_extxyz_path": row.get("frames_extxyz_path", ""),
+                    "source_sp_job_dir": row.get("source_job_dir", row.get("job_dir", "")),
+                    "requested_label_mode": "short_aimd",
+                    "extxyz_path": local.get("extxyz_path", ""),
+                }
+            )
+    if not rows:
+        rows.append({"status": "skipped_no_successful_sp_patch", "source_sp_status": "", "requested_label_mode": "short_aimd", "extxyz_path": ""})
+    return write_rows(p(config, "exports_dir") / "selected_short_aimd_manifest.csv", rows)
 
 
 def cell_inc(box: Tuple[float, float, float]) -> str:
@@ -166,7 +207,7 @@ def write_cp2k_label_inputs(config: Dict[str, Any], mode: str = "main") -> Path:
         if not set(elems).issubset(AIMD_ELEMENTS):
             rows.append({"aimd_structure_id": aimd_id, "family": family, "label_mode": "none", "status": "skipped_forbidden_elements"})
             continue
-        for label_mode in mode_names(family):
+        for label_mode in mode_names(row):
             job_dir = p(config, "cp2k_jobs_dir") / aimd_id / label_mode
             job_dir.mkdir(parents=True, exist_ok=True)
             project = f"{aimd_id}_{label_mode}"
@@ -174,9 +215,24 @@ def write_cp2k_label_inputs(config: Dict[str, Any], mode: str = "main") -> Path:
             coords_inc(job_dir / "coords.inc", elems, coords)
             (job_dir / "cell.inc").write_text(cell_inc(box), encoding="utf-8")
             (job_dir / "input.inp").write_text(input_text(aimd_id, label_mode, box, config, mode), encoding="utf-8")
-            (job_dir / "job_metadata.yaml").write_text(yaml.safe_dump({"aimd_structure_id": aimd_id, "family": family, "patch_id": row.get("patch_id") or row.get("source_patch_id", ""), "label_mode": label_mode, "cp2k_project": project, "cp2k_run_type": "ENERGY_FORCE" if label_mode == "sp_force" else "MD", "source_extxyz_path": str(src), "cp2k_run_performed": False}, sort_keys=False), encoding="utf-8")
+            metadata = {
+                "aimd_structure_id": aimd_id,
+                "family": family,
+                "crop_family": row.get("crop_family", family),
+                "patch_id": row.get("patch_id") or row.get("source_patch_id", ""),
+                "label_mode": label_mode,
+                "cp2k_project": project,
+                "cp2k_run_type": "ENERGY_FORCE" if label_mode == "sp_force" else "MD",
+                "source_extxyz_path": str(src),
+                "source_stage": row.get("source_stage", ""),
+                "polymer_architecture": row.get("polymer_architecture", ""),
+                "pe_variant": row.get("pe_variant", ""),
+                "pp_variant": row.get("pp_variant", ""),
+                "cp2k_run_performed": False,
+            }
+            (job_dir / "job_metadata.yaml").write_text(yaml.safe_dump(metadata, sort_keys=False), encoding="utf-8")
             (job_dir / "run_status.json").write_text(json.dumps({"status": "input_written_not_submitted", "cp2k_out": str(job_dir / "cp2k.out")}, indent=2) + "\n", encoding="utf-8")
-            rows.append({"aimd_structure_id": aimd_id, "family": family, "patch_id": row.get("patch_id") or row.get("source_patch_id", ""), "label_mode": label_mode, "cp2k_project": project, "cp2k_run_type": "ENERGY_FORCE" if label_mode == "sp_force" else "MD", "status": "cp2k_input_written_no_cp2k_run", "job_dir": str(job_dir), "input_inp_path": str(job_dir / "input.inp"), "coords_xyz_path": str(job_dir / "coords.xyz"), "coords_inc_path": str(job_dir / "coords.inc"), "cell_inc_path": str(job_dir / "cell.inc"), "source_extxyz_path": str(src)})
+            rows.append({**metadata, "status": "cp2k_input_written_no_cp2k_run", "job_dir": str(job_dir), "input_inp_path": str(job_dir / "input.inp"), "coords_xyz_path": str(job_dir / "coords.xyz"), "coords_inc_path": str(job_dir / "coords.inc"), "cell_inc_path": str(job_dir / "cell.inc")})
     if not rows:
         rows.append({"aimd_structure_id": "none", "family": "", "label_mode": "none", "status": "skipped_no_available_aimd_structure"})
     return write_rows(p(config, "cp2k_jobs_dir") / "cp2k_label_input_manifest.csv", rows)

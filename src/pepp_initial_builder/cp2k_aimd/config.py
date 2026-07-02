@@ -6,12 +6,15 @@ from typing import Any, Dict, List
 
 import yaml
 
+from pepp_initial_builder.common.run import apply_run_namespace
+
 
 def load_cp2k_config(path: str | Path) -> Dict[str, Any]:
     path = Path(path)
     with open(path, "r", encoding="utf-8") as handle:
         config = yaml.safe_load(handle)
     if isinstance(config, dict) and isinstance(config.get("paths"), dict):
+        config = apply_run_namespace(config)
         root_value = config["paths"].get("root")
         if root_value in {None, "", "."}:
             config["paths"]["root"] = str(path.resolve().parents[1])

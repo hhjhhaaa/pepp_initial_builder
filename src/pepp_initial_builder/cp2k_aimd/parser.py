@@ -127,7 +127,21 @@ def parse_cp2k_outputs(config: Dict[str, Any]) -> Path:
                 else:
                     summary.update({"status": "failed_cp2k", "failure_reason": "missing_parseable_energy_or_forces"})
         (out_dir / "parse_summary.yaml").write_text(yaml.safe_dump(summary, sort_keys=False), encoding="utf-8")
-        rows.append({"aimd_structure_id": row["aimd_structure_id"], "family": row.get("family", ""), "patch_id": row.get("patch_id", ""), "label_mode": row["label_mode"], **summary, "frames_extxyz_path": str(frames) if frames.exists() else "", "parse_summary_path": str(out_dir / "parse_summary.yaml")})
+        rows.append(
+            {
+                "aimd_structure_id": row["aimd_structure_id"],
+                "family": row.get("family", ""),
+                "crop_family": row.get("crop_family", row.get("family", "")),
+                "patch_id": row.get("patch_id", ""),
+                "label_mode": row["label_mode"],
+                "cp2k_run_type": row.get("cp2k_run_type", ""),
+                "source_stage": row.get("source_stage", ""),
+                "polymer_architecture": row.get("polymer_architecture", ""),
+                **summary,
+                "frames_extxyz_path": str(frames) if frames.exists() else "",
+                "parse_summary_path": str(out_dir / "parse_summary.yaml"),
+            }
+        )
     if not rows:
         rows.append({"aimd_structure_id": "none", "label_mode": "none", "status": "not_run_no_cp2k_output", "usable_frame_count": 0, "failure_reason": "no cp2k input jobs"})
     return write_rows(p(config, "cp2k_parsed_dir") / "cp2k_parsed_manifest.csv", rows)

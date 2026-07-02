@@ -8,6 +8,10 @@ paths:
   aimd_exports_dir: data/exports
   logs_dir: outputs/logs
   figures_dir: outputs/figures
+run:
+  run_id: pilot_20260703_fullpore_relaxed_cp2k
+  clean_start: true
+  forbid_reuse_existing_tiny_outputs: true
 tools:
   porems_search_roots: [., ~/software, ~]
   porems_path_hint:
@@ -31,20 +35,20 @@ porems:
   surface: hydroxylated_silica
   require_explicit_surface_H: true
   require_no_dangling_bonds: true
-  pore_diameter_nm_candidates: [4.0, 6.0]
-  pore_length_nm_candidates: [4.0, 6.0]
-  hydroxylation_modes: [silanol_rich, siloxane_rich, mixed_oh]
+  pore_diameter_nm_candidates: [4.0]
+  pore_length_nm_candidates: [8.0]
+  hydroxylation_modes: [silanol_rich]
   max_pore_models_tiny: 1
   max_pore_models_pilot: 3
   max_pore_models_main: 6
 full_pore_seed_matrix:
-  purpose: mlff_exploration_for_active_learning
-  pore_diameter_nm: [4.0, 6.0]
-  pore_length_nm: [4.0, 6.0]
+  purpose: pilot_production_full_pore_relaxed_cp2k_crop_source
+  pore_diameter_nm: [4.0]
+  pore_length_nm: [8.0]
   pe_pp_compositions: [[1.00, 0.00], [0.50, 0.50], [0.00, 1.00]]
   chain_lengths_backbone: [80]
-  polymer_loading_modes: [low_loading, medium_loading]
-  seeds: [1]
+  polymer_loading_modes: [low, medium]
+  seeds: [1, 2]
   tiny_max_systems: 3
   pilot_max_systems: 12
   main_max_systems: 60
@@ -57,28 +61,57 @@ full_pore_seed:
   max_initial_overlap_retries: 2000
   min_polymer_inside_pore_fraction: 0.95
   min_polymer_silica_distance_A: 1.6
+  loading_chain_multiplier:
+    low: 1
+    medium: 2
 lammps_full_pore_relax:
   enabled: true
   purpose: full_pore_pre_equilibration_before_cp2k_crop
+  protocol: fixed_silica_pore_polymer_multistage_anneal_v1
+  full_pore_box_compression: false
+  full_pore_box_compression_reason: fixed_silica_host_pore_geometry_must_not_be_barostatted
   temperature_K: 523.0
+  initial_temperature_K: 300.0
   high_temperature_K: 650.0
   timestep_fs: 0.5
+  tiny_warmup_steps: 5000
   tiny_high_temp_steps: 10000
+  tiny_cool_steps: 5000
   tiny_target_temp_steps: 10000
-  pilot_high_temp_steps: 400000
-  pilot_target_temp_steps: 1600000
+  pilot_warmup_steps: 200000      # 100 ps, remove insertion shocks
+  pilot_high_temp_steps: 1000000     # 500 ps high-T anneal for pore insertion relaxation
+  pilot_cool_steps: 400000        # 200 ps, cool from 650 K to 523 K
+  pilot_target_temp_steps: 4400000 # 2.2 ns hold at target T; total pilot = 3.0 ns
+  main_warmup_steps: 1000000
   main_high_temp_steps: 2000000
+  main_cool_steps: 1000000
   main_target_temp_steps: 8000000
   minimize_etol: 1.0e-6
   minimize_ftol: 1.0e-8
-  minimize_maxiter: 5000
+  minimize_maxiter: 10000
   minimize_maxeval: 20000
-  thermo_every: 500
-  dump_every: 1000
-  timeout_seconds: 1800
+  thermo_every: 1000
+  dump_every: 20000
+  use_last_fraction: 0.5
+  timeout_seconds: 21600
   silica_mobile: false
   relax_is_training_data: false
   relax_is_production_md: false
+relax_quality_gate:
+  target_temperature_K: 523.0
+  hold_temperature_mean_tolerance_K: 50.0
+  hold_temperature_std_max_K: 80.0
+  max_abs_coordinate_A: 100000.0
+  max_atom_displacement_between_dumps_A: 20.0
+  min_polymer_silica_distance_A: 1.6
+  min_polymer_inside_pore_fraction: 0.95
+  min_contact_count_3p5A: 1
+  min_contact_count_5p0A: 10
+branched_pe:
+  variant: PE_branched_LDPE_like_v1
+  branch_density_per_1000C_range: [15, 25]
+  branch_types: [ethyl, butyl]
+  require_complete_pcff_class2_topology: true
 packing:
   tolerance_A: 2.0
   maxit: 2000

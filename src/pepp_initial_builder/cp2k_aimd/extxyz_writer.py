@@ -64,7 +64,26 @@ def read_xyz_frames(path: Path) -> List[Tuple[List[str], List[List[float]]]]:
 
 
 def comment_metadata(row: Dict[str, str], frame_index: int, energy_eV: float, box: Tuple[float, float, float], normal_end: bool) -> str:
-    meta = {"energy": f"{energy_eV:.12f}", "energy_unit": "eV", "forces_unit": "eV/Angstrom", "cp2k_energy_raw_unit": "Hartree", "cp2k_force_raw_unit": "Hartree/Bohr", "source": "real_cp2k_output", "aimd_seed_id": row.get("aimd_structure_id", ""), "family": row.get("family", ""), "patch_id": row.get("patch_id", ""), "label_mode": row.get("label_mode", ""), "cp2k_project": row.get("cp2k_project", f"{row.get('aimd_structure_id', '')}_{row.get('label_mode', '')}"), "cp2k_run_type": row.get("cp2k_run_type", "ENERGY_FORCE" if row.get("label_mode") == "sp_force" else "MD"), "source_job_dir": row.get("job_dir", ""), "source_frame_index": str(frame_index), "cp2k_normal_end": str(bool(normal_end)).lower()}
+    meta = {
+        "energy": f"{energy_eV:.12f}",
+        "energy_unit": "eV",
+        "forces_unit": "eV/Angstrom",
+        "cp2k_energy_raw_unit": "Hartree",
+        "cp2k_force_raw_unit": "Hartree/Bohr",
+        "source": "real_cp2k_output",
+        "source_stage": row.get("source_stage", ""),
+        "crop_family": row.get("crop_family", row.get("family", "")),
+        "polymer_architecture": row.get("polymer_architecture", ""),
+        "aimd_seed_id": row.get("aimd_structure_id", ""),
+        "family": row.get("family", ""),
+        "patch_id": row.get("patch_id", ""),
+        "label_mode": row.get("label_mode", ""),
+        "cp2k_project": row.get("cp2k_project", f"{row.get('aimd_structure_id', '')}_{row.get('label_mode', '')}"),
+        "cp2k_run_type": row.get("cp2k_run_type", "ENERGY_FORCE" if row.get("label_mode") == "sp_force" else "MD"),
+        "source_job_dir": row.get("job_dir", ""),
+        "source_frame_index": str(frame_index),
+        "cp2k_normal_end": str(bool(normal_end)).lower(),
+    }
     fields = [f'Lattice="{box[0]} 0 0 0 {box[1]} 0 0 0 {box[2]}"', "Properties=species:S:1:pos:R:3:forces:R:3", 'pbc="T T T"']
     fields.extend(f'{key}="{value}"' if "/" in value or " " in value else f"{key}={value}" for key, value in meta.items())
     return " ".join(fields)

@@ -50,6 +50,7 @@ python scripts/pore/export_manifest.py --config configs/pore.yaml
 python scripts/mlff_seed/build_packmol_inputs.py --config configs/mlff_seed.yaml --tiny
 python scripts/mlff_seed/pack_polymer_into_pore.py --config configs/mlff_seed.yaml --tiny
 python scripts/mlff_seed/write_lammps_relax.py --config configs/mlff_seed.yaml --tiny
+python scripts/mlff_seed/collect_lammps_relax.py --config configs/mlff_seed.yaml
 python scripts/mlff_seed/validate.py --config configs/mlff_seed.yaml --tiny
 python scripts/mlff_seed/export_manifest.py --config configs/mlff_seed.yaml
 
@@ -58,6 +59,8 @@ python scripts/cp2k_aimd/build_seed_structures.py --config configs/cp2k_aimd.yam
 python scripts/cp2k_aimd/write_cp2k_inputs.py --config configs/cp2k_aimd.yaml --tiny
 python scripts/cp2k_aimd/make_hpc_jobs.py --config configs/cp2k_aimd.yaml --tiny
 python scripts/cp2k_aimd/parse_cp2k_outputs.py --config configs/cp2k_aimd.yaml
+python scripts/cp2k_aimd/select_short_aimd.py --config configs/cp2k_aimd.yaml
+python scripts/cp2k_aimd/write_cp2k_inputs.py --config configs/cp2k_aimd.yaml --tiny
 python scripts/cp2k_aimd/build_dataset.py --config configs/cp2k_aimd.yaml
 python scripts/cp2k_aimd/validate_dataset.py --config configs/cp2k_aimd.yaml
 python scripts/cp2k_aimd/export_dataset_manifest.py --config configs/cp2k_aimd.yaml
@@ -78,26 +81,31 @@ Full-pore structure method:
    r < pore_radius - wall_buffer_A
    end_buffer_A < z < box_lz - end_buffer_A
 4. LAMMPS pre-equilibrates the packed full-pore structure before any CP2K crop:
-   minimization -> high-temperature NVT anneal -> target-temperature NVT.
+   minimization -> polymer warmup -> high-temperature NVT anneal -> cooling -> target-temperature NVT hold.
 5. CP2K/AIMD local crops are cut only from LAMMPS-relaxed full-pore structures
    or later LAMMPS exploration snapshots.
 ```
 
-The polymer is intentionally packed inside the pore before MD. The LAMMPS stage is not used to wait for chains to diffuse from outside the pore into the pore, because that insertion/adsorption process is too slow for the tiny first-run validation and would make the initial dataset irreproducible. LAMMPS is used to remove packing contacts and equilibrate chain conformations, local density, and polymer-silica contacts at fixed pore geometry.
+The polymer is intentionally packed inside the pore before MD. The LAMMPS stage is not used to wait for chains to diffuse from outside the pore into the pore, because that insertion/adsorption process is too slow for the first production dataset and would make the initial dataset irreproducible. LAMMPS is used to remove packing contacts and equilibrate chain conformations, local density, and polymer-silica contacts at fixed pore geometry.
+
+The formal full-pore protocol does not barostat or compress the complete PE/PP-silica box after the silica pore is present. The silica host defines the pore diameter and wall geometry, so full-box NPT compression would change the physical pore model. The production analog of compression/densification is therefore staged constrained pore loading: Packmol cylinder placement at the requested loading, FIRE minimization, short polymer warmup, high-temperature polymer NVT annealing, controlled cooling, and a long target-temperature NVT hold with the silica host fixed.
 
 Default full-pore LAMMPS pre-equilibration parameters:
 
 ```text
-force field path: EMC PCFF polymer parameters + fixed nonreactive silica host terms
+force field path: EMC PCFF/Class2 polymer parameters + fixed nonreactive silica host terms
 ensemble: polymer NVT, silica fixed by setforce 0 0 0
 timestep: 0.5 fs
 minimization: fire, etol 1e-6, ftol 1e-8
-anneal stage: 650 K NVT
-target stage: 523 K NVT
+warmup stage: 300 K -> 523 K polymer NVT
+anneal stage: 650 K polymer NVT
+cooling stage: 650 K -> 523 K polymer NVT
+target stage: 523 K polymer NVT hold
+full-pore box compression: disabled after pore construction
 
-tiny:  10,000 + 10,000 steps = 10 ps, smoke test only
-pilot: 400,000 + 1,600,000 steps = 1 ns, first credible pre-equilibrated structures
-main:  2,000,000 + 8,000,000 steps = 5 ns, production starting structures
+tiny:  5,000 + 10,000 + 5,000 + 10,000 steps = 15 ps, smoke test only
+pilot: 200,000 + 1,000,000 + 400,000 + 4,400,000 steps = 3 ns, first production relaxed sources
+main:  1,000,000 + 2,000,000 + 1,000,000 + 8,000,000 steps = 6 ns, extended production sources
 ```
 
 The tiny setting is deliberately short so the HPC toolchain can be validated quickly. It is not a claim of structural equilibration. For production analysis, density/contact convergence should be checked from the pilot/main LAMMPS trajectories before increasing CP2K crop volume.
@@ -116,23 +124,25 @@ data/exports/aimd_dataset_manifest.csv
 
 `data/` is a generated workspace and is ignored by Git. The repository tracks code, configs, scripts, tests, and small audit text only; generated structures, manifests, CP2K jobs, parsed outputs, and AIMD extxyz files stay local or move by rsync.
 
-CP2K is not assumed to run in local WSL. Slurm scripts contain:
+CP2K is not assumed to run in local WSL. Slurm scripts contain a module verification helper and conservative array throttles:
 
 ```bash
 module purge
-module load __SET_CP2K_MODULE_ON_HPC__
+module load cp2k-2024.1
 # export CP2K_DATA_DIR="__SET_CP2K_DATA_DIR_ON_HPC__"
 CP2K_CMD=${CP2K_CMD:-cp2k.psmp}
 ```
 
+On HPC, first run `outputs/runs/<run_id>/jobs/verify_cp2k_module.sh`. If `module load cp2k-2024.1`, `which cp2k.psmp`, or `cp2k.psmp --version` fails, update `configs/cp2k_aimd.yaml` with the verified module name before submitting CP2K arrays.
+
 Recommended HPC tiny first-run order:
 
-1. Submit only 1-3 `ENERGY_FORCE` jobs with `outputs/jobs/submit_cp2k_sp_tiny.sh` after editing the Slurm array range on the HPC side.
+1. Submit only 1-3 `ENERGY_FORCE` jobs with `outputs/runs/<run_id>/jobs/submit_cp2k_sp_tiny.sh` after editing the Slurm array range on the HPC side.
 2. Check each `cp2k.out`, then rsync the small outputs back and run `scripts/cp2k_aimd/parse_cp2k_outputs.py`.
 3. Submit the remaining SP jobs only after the parser reports real frames with eV energies and eV/Angstrom forces.
-4. Submit `outputs/jobs/submit_cp2k_short_aimd_tiny.sh` only after SP inputs, module loading, basis/potential lookup, normal-end detection, and parsing are confirmed.
+4. Run `scripts/cp2k_aimd/select_short_aimd.py`, regenerate AIMD inputs/jobs, then submit `outputs/runs/<run_id>/jobs/submit_cp2k_short_aimd_tiny.sh` only after SP inputs, module loading, basis/potential lookup, normal-end detection, and parsing are confirmed.
 
-The combined `outputs/jobs/submit_cp2k_seed_tiny.sh` exists for convenience, but the split SP-then-short-AIMD path is the recommended validation route.
+The combined `outputs/runs/<run_id>/jobs/submit_cp2k_seed_tiny.sh` exists for convenience, but the split SP-then-short-AIMD path is the recommended validation route.
 
 CP2K/AIMD seed structures are cropped only from LAMMPS-relaxed full-pore PE/PP-silica sources or later LAMMPS exploration snapshots. Raw Packmol full-pore seeds are not accepted as CP2K crop sources. Hand-designed silica patches are kept in the pore workflow for bootstrap geometry checks, but the CP2K seed builder requires full-pore seed/snapshot sources and records source stage, local environment reason, frame provenance, crop boundary treatment, local composition, wall distance, and cell centering metadata.
 

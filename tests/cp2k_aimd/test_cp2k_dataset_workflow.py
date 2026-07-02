@@ -114,17 +114,32 @@ def test_cp2k_inputs_slurm_and_no_output_status(tmp_path):
 
     input_manifest = write_cp2k_label_inputs(cfg, "tiny")
     text_a = (tmp_path / "data/cp2k_aimd/jobs/aimd_a/sp_force/input.inp").read_text(encoding="utf-8")
-    text_b = (tmp_path / "data/cp2k_aimd/jobs/aimd_b/short_aimd/input.inp").read_text(encoding="utf-8")
+    assert not (tmp_path / "data/cp2k_aimd/jobs/aimd_b/short_aimd/input.inp").exists()
     assert "RUN_TYPE ENERGY_FORCE" in text_a
-    assert "RUN_TYPE MD" in text_b
     assert "DFTD3(BJ)" in text_a
     assert "&CELL" in text_a
     assert "ABC 10.0000000000 10.0000000000 10.0000000000" in text_a
     assert "@INCLUDE coords.inc" in text_a
     for element in ["C", "H", "O", "Si"]:
         assert f"&KIND {element}" in text_a
-    assert "&MOTION" in text_b
     assert Path(input_manifest).exists()
+
+    selected = tmp_path / "data/exports/selected_short_aimd_manifest.csv"
+    pd.DataFrame(
+        [
+            {
+                "aimd_structure_id": "aimd_b",
+                "status": "selected_for_short_aimd",
+                "source_sp_status": "parsed_real_cp2k_output",
+                "family": "silica_only_wall_baseline",
+                "extxyz_path": str(b),
+            }
+        ]
+    ).to_csv(selected, index=False)
+    write_cp2k_label_inputs(cfg, "tiny")
+    text_b = (tmp_path / "data/cp2k_aimd/jobs/aimd_b/short_aimd/input.inp").read_text(encoding="utf-8")
+    assert "RUN_TYPE MD" in text_b
+    assert "&MOTION" in text_b
 
     job_manifest = make_hpc_cp2k_jobs(cfg, "tiny")
     sp_script = (tmp_path / "outputs/jobs/run_cp2k_sp_array.sbatch").read_text(encoding="utf-8")

@@ -57,6 +57,39 @@ def build_aimd_local_structures(config: Dict[str, Any], mode: str = "tiny") -> P
         elems, coords, box = read_xyz_like(source_path)
         remaining = max_structures - made
         environments = select_local_environments(elems, coords, source, config, remaining)
+        families_done = {env.selection_reason for env in environments}
+        requested = set(config.get("aimd_local_matrix", {}).get("families", []))
+        if source.get("pe_variant") != "PE_branched_LDPE_like_v1" and "PE_branched_side_chain_silanol_contact" in requested:
+            rows.append(
+                {
+                    "aimd_structure_id": f"skipped_branched_pe_{len(rows) + 1:04d}",
+                    "status": "skipped_no_branched_pe_source",
+                    "family": "PE_branched_side_chain_silanol_contact",
+                    "crop_source": "full_pore_snapshot",
+                    "source_stage": source["source_stage"],
+                    "source_full_pore_id": source["source_full_pore_id"],
+                    "source_snapshot_path": source["source_snapshot_path"],
+                    "extxyz_path": "",
+                    "usable_for_cp2k_aimd": False,
+                    "failure_reason": "PE_branched_LDPE_like_v1_pending_not_generated",
+                }
+            )
+        atom_roles = str(source.get("atom_roles_path", ""))
+        if any(f.startswith("PP_methyl") for f in requested) and "PP_methyl_silanol_contact" not in families_done and "PP_methyl_siloxane_contact" not in families_done:
+            rows.append(
+                {
+                    "aimd_structure_id": f"skipped_pp_methyl_{len(rows) + 1:04d}",
+                    "status": "skipped_missing_atom_role_metadata" if not atom_roles else "skipped_no_pp_methyl_wall_candidate",
+                    "family": "PP_methyl_*",
+                    "crop_source": "full_pore_snapshot",
+                    "source_stage": source["source_stage"],
+                    "source_full_pore_id": source["source_full_pore_id"],
+                    "source_snapshot_path": source["source_snapshot_path"],
+                    "extxyz_path": "",
+                    "usable_for_cp2k_aimd": False,
+                    "failure_reason": "PP methyl selection requires atom_role=PP_side_methyl_C,is_side_group=true,parent_backbone_atom_id",
+                }
+            )
         for env in environments:
             if made >= max_structures:
                 break
@@ -82,6 +115,18 @@ def build_aimd_local_structures(config: Dict[str, Any], mode: str = "tiny") -> P
                     "local_PE_fraction": meta["local_PE_fraction"],
                     "local_PP_fraction": meta["local_PP_fraction"],
                     "surface_class": meta["surface_class"],
+                    "crop_family": meta.get("crop_family", meta["selection_reason"]),
+                    "polymer_architecture": meta.get("polymer_architecture", ""),
+                    "pe_variant": meta.get("pe_variant", ""),
+                    "pp_variant": meta.get("pp_variant", ""),
+                    "center_atom_role": meta.get("center_atom_role", ""),
+                    "parent_backbone_atom_id": meta.get("parent_backbone_atom_id", ""),
+                    "nearest_silica_atom_id": meta.get("nearest_silica_atom_id", ""),
+                    "nearest_silica_element": meta.get("nearest_silica_element", ""),
+                    "methyl_wall_alignment": meta.get("methyl_wall_alignment", ""),
+                    "methyl_orientation_class": meta.get("methyl_orientation_class", ""),
+                    "n_PP_side_methyl_within_5A": meta.get("n_PP_side_methyl_within_5A", ""),
+                    "n_PE_backbone_C_within_5A": meta.get("n_PE_backbone_C_within_5A", ""),
                     "boundary_treatment": meta["boundary_treatment"],
                     "cap_atom_count": meta["cap_atom_count"],
                     "n_atoms": meta["n_atoms"],

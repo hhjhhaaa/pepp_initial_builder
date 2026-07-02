@@ -20,9 +20,39 @@ def build_aimd_dataset(config: Dict[str, Any]) -> Path:
     real = [row for row in parsed if row.get("status") == "parsed_real_cp2k_output"]
     min_frames = int(config["dataset"]["min_frames_for_training"])
     total = sum(int(row.get("usable_frame_count", 0)) for row in real)
+    failed = [row for row in parsed if row.get("status") != "parsed_real_cp2k_output"]
+    def _count_by(key: str) -> Dict[str, int]:
+        counts: Dict[str, int] = {}
+        for row in real:
+            label = str(row.get(key, "") or "unknown")
+            counts[label] = counts.get(label, 0) + int(row.get("usable_frame_count", 0))
+        return counts
+
+    failure_reason_counts: Dict[str, int] = {}
+    for row in failed:
+        reason = str(row.get("failure_reason", "") or row.get("status", "unknown"))
+        failure_reason_counts[reason] = failure_reason_counts.get(reason, 0) + 1
+    num_sp = sum(int(row.get("usable_frame_count", 0)) for row in real if row.get("label_mode") == "sp_force" or row.get("cp2k_run_type") == "ENERGY_FORCE")
+    num_aimd = sum(int(row.get("usable_frame_count", 0)) for row in real if row.get("label_mode") == "short_aimd" or row.get("cp2k_run_type") == "MD")
+    source_counts = _count_by("source_stage")
+    relaxed_count = source_counts.get("lammps_relaxed_full_pore", 0)
+    non_relaxed_count = total - relaxed_count
+    common_summary = {
+        "num_sp_frames": num_sp,
+        "num_aimd_frames": num_aimd,
+        "num_frames_by_crop_family": _count_by("crop_family"),
+        "num_frames_by_polymer_architecture": _count_by("polymer_architecture"),
+        "num_frames_by_source_stage": source_counts,
+        "num_frames_from_lammps_relaxed_full_pore": relaxed_count,
+        "num_frames_from_non_relaxed_source": non_relaxed_count,
+        "num_failed_cp2k_jobs": len(failed),
+        "failure_reason_counts": failure_reason_counts,
+    }
     rows = [{"split": split, "extxyz_path": "", "frame_count": 0} for split in ["train", "val", "test"]]
     if total < min_frames:
-        summary = {"dataset_status": "insufficient_real_cp2k_frames", "usable_for_mlff_training": False, "failure_reason": f"real frames < {min_frames}"}
+        summary = {"dataset_status": "insufficient_real_cp2k_frames", "usable_for_mlff_training": False, "failure_reason": f"real frames < {min_frames}", **common_summary}
+    elif non_relaxed_count != 0:
+        summary = {"dataset_status": "failed_non_relaxed_source_detected", "usable_for_mlff_training": False, "failure_reason": "accepted frames include non-lammps_relaxed_full_pore source", **common_summary}
     else:
         block_keys = list(dict.fromkeys("|".join([str(row.get("family", "")), str(row.get("patch_id", "")), str(row.get("aimd_structure_id", ""))]) for row in real))
         split_for = {}
@@ -36,6 +66,6 @@ def build_aimd_dataset(config: Dict[str, Any]) -> Path:
             if part:
                 out.write_text("".join(Path(row["frames_extxyz_path"]).read_text(encoding="utf-8") for row in part), encoding="utf-8")
             rows.append({"split": split, "extxyz_path": str(out) if part else "", "frame_count": sum(int(row.get("usable_frame_count", 0)) for row in part)})
-        summary = {"dataset_status": "ready", "usable_for_mlff_training": True, "failure_reason": ""}
+        summary = {"dataset_status": "ready", "usable_for_mlff_training": True, "failure_reason": "", **common_summary}
     (p(config, "aimd_dataset_dir") / "dataset_summary.yaml").write_text(yaml.safe_dump(summary, sort_keys=False), encoding="utf-8")
     return write_rows(p(config, "aimd_dataset_dir") / "dataset_manifest.csv", rows)

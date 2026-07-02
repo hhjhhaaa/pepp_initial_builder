@@ -11,6 +11,7 @@ import yaml
 
 from pepp_initial_builder.common.io import write_pdb, write_xyz
 from pepp_initial_builder.common.openbabel import pdb_elements_coords_via_obabel
+from pepp_initial_builder.common.run import run_id
 from pepp_initial_builder.pore.config import ensure_pore_dirs, pore_root
 from pepp_initial_builder.pore.porems_builder import atoms_from_elements, available_pore_rows, read_xyz_like
 from pepp_initial_builder.pore.surface_classifier import estimate_pore_radius_A, inside_pore_fraction, min_cross_distance, pore_center
@@ -87,8 +88,112 @@ def _run_packmol(inp: Path, exe: str, timeout: int) -> tuple[bool, str]:
         return False, str(exc)
 
 
+def _composition_label(pe: float, pp: float) -> str:
+    return f"PE_HDPE{int(round(pe * 100)):02d}_PP{int(round(pp * 100)):02d}"
+
+
+def _loading_multiplier(config: Dict[str, Any], loading: str) -> int:
+    values = config.get("full_pore_seed", {}).get("loading_chain_multiplier", {})
+    return max(1, int(values.get(str(loading), 1)))
+
+
+def _infer_template_roles(chain_type: str, elems: List[str], coords: List[List[float]], template_index: int) -> List[Dict[str, Any]]:
+    arr = np.array(coords, dtype=float)
+    roles: List[Dict[str, Any]] = []
+    carbon = [i for i, elem in enumerate(elems) if elem == "C"]
+    side_methyl: set[int] = set()
+    parent_for: Dict[int, int] = {}
+    if chain_type == "PP":
+        for idx in carbon:
+            c_neighbors = [j for j in carbon if j != idx and float(np.linalg.norm(arr[idx] - arr[j])) <= 1.85]
+            h_neighbors = [j for j, elem in enumerate(elems) if elem == "H" and float(np.linalg.norm(arr[idx] - arr[j])) <= 1.25]
+            if len(c_neighbors) == 1 and len(h_neighbors) >= 2:
+                side_methyl.add(idx)
+                parent_for[idx] = c_neighbors[0]
+    for local_idx, elem in enumerate(elems):
+        attached_methyl = next((c for c in side_methyl if elem == "H" and float(np.linalg.norm(arr[local_idx] - arr[c])) <= 1.25), None)
+        if chain_type == "PP" and local_idx in side_methyl:
+            atom_role = "PP_side_methyl_C"
+            is_side = True
+            parent = parent_for.get(local_idx)
+        elif chain_type == "PP" and attached_methyl is not None:
+            atom_role = "PP_side_methyl_H"
+            is_side = True
+            parent = parent_for.get(attached_methyl)
+        elif elem == "C":
+            atom_role = f"{chain_type}_backbone_C"
+            is_side = False
+            parent = None
+        elif elem == "H":
+            atom_role = f"{chain_type}_backbone_H"
+            is_side = False
+            parent = None
+        else:
+            atom_role = f"{chain_type}_{elem}"
+            is_side = False
+            parent = None
+        roles.append(
+            {
+                "template_index": template_index,
+                "template_atom_index": local_idx + 1,
+                "element": elem,
+                "polymer_type": chain_type,
+                "pe_variant": "PE_HDPE_linear" if chain_type == "PE" else "",
+                "pp_variant": "PP_atactic_like_v0" if chain_type == "PP" else "",
+                "atom_role": atom_role,
+                "is_side_group": bool(is_side),
+                "parent_template_atom_id": "" if parent is None else parent + 1,
+                "parent_backbone_atom_id": "",
+                "methyl_orientation_class": "emc_generated_atactic_like" if atom_role == "PP_side_methyl_C" else "",
+            }
+        )
+    return roles
+
+
+def _write_atom_roles(path: Path, n_pore: int, role_templates: List[Dict[str, Any]]) -> None:
+    rows = []
+    for idx, role in enumerate(role_templates, start=1):
+        source_parent = role.get("parent_template_atom_id")
+        parent_global = "" if source_parent in {"", None} else n_pore + idx - int(role["template_atom_index"]) + int(source_parent)
+        rows.append({**role, "atom_id": n_pore + idx, "parent_backbone_atom_id": parent_global})
+    pd.DataFrame(rows).to_csv(path, index=False)
+
+
+def write_branched_pe_capability_probe(config: Dict[str, Any]) -> Path:
+    root = pore_root(config)
+    rid = run_id(config)
+    out = root / config["paths"].get("aimd_exports_dir", config["paths"].get("exports_dir", "data/exports")) / "branched_pe_capability_manifest.csv"
+    log = root / config["paths"].get("logs_dir", "outputs/logs") / "branched_pe_emc_capability_probe.txt"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    log.parent.mkdir(parents=True, exist_ok=True)
+    rows = []
+    branch_cfg = config.get("branched_pe", {})
+    for branch_type in branch_cfg.get("branch_types", ["ethyl", "butyl"]):
+        rows.append(
+            {
+                "run_id": rid,
+                "pe_variant": branch_cfg.get("variant", "PE_branched_LDPE_like_v1"),
+                "branch_type": branch_type,
+                "branch_density_per_1000C": "15-25",
+                "emc_topology_generated": False,
+                "pcff_class2_terms_complete": False,
+                "status": "pending_not_generated",
+                "failure_reason": "branched_pe_emc_recipe_not_implemented_no_density_substitution_allowed",
+            }
+        )
+    pd.DataFrame(rows).to_csv(out, index=False)
+    log.write_text(
+        "PE_branched_LDPE_like_v1 probe result: pending_not_generated.\n"
+        "Reason: no verified EMC recipe currently generates complete PCFF/Class2 branched PE topology; density lowering is forbidden as LDPE substitute.\n",
+        encoding="utf-8",
+    )
+    return out
+
+
 def build_full_pore_seed_structures(config: Dict[str, Any], mode: str = "tiny") -> Path:
     ensure_pore_dirs(config)
+    if mode == "pilot":
+        write_branched_pe_capability_probe(config)
     pores = available_pore_rows(config)
     outbase = pore_root(config) / config["paths"]["full_pore_seed_structures_dir"]
     maxn = int(config["full_pore_seed_matrix"][f"{mode}_max_systems"])
@@ -106,101 +211,128 @@ def build_full_pore_seed_structures(config: Dict[str, Any], mode: str = "tiny") 
             min_inside = float(seed_cfg.get("min_polymer_inside_pore_fraction", 0.95))
             min_silica = float(seed_cfg.get("min_polymer_silica_distance_A", 1.6))
             pore_radius = estimate_pore_radius_A(pore, box, coords)
-            for pe, pp in config["full_pore_seed_matrix"]["pe_pp_compositions"]:
+            matrix = config["full_pore_seed_matrix"]
+            for pe, pp in matrix["pe_pp_compositions"]:
+                for loading in matrix.get("polymer_loading_modes", ["low"]):
+                    for seed_value in matrix.get("seeds", [1]):
+                        if made >= maxn:
+                            break
+                        seed = int(seed_value)
+                        composition = _composition_label(float(pe), float(pp))
+                        sid = f"full_pore_seed_{made + 1:04d}_{composition}_{loading}_seed{seed}"
+                        structure_dir = outbase / sid
+                        structure_dir.mkdir(parents=True, exist_ok=True)
+                        pore_atoms = atoms_from_elements(elems, np.array(coords, dtype=float), 0)
+                        polymer_templates: List[Path] = []
+                        polymer_elems: List[str] = []
+                        role_templates: List[Dict[str, Any]] = []
+                        template_index = 0
+                        for chain_type, fraction in [("PE", float(pe)), ("PP", float(pp))]:
+                            if fraction <= 0:
+                                continue
+                            for copy_idx in range(_loading_multiplier(config, str(loading))):
+                                template_index += 1
+                                template_dir = structure_dir / "emc_chain_templates" / f"{chain_type.lower()}_{copy_idx + 1:02d}"
+                                template = write_emc_chain_template(config, chain_type, int(matrix["chain_lengths_backbone"][0]), seed + copy_idx, template_dir)
+                                polymer_templates.append(Path(template["pdb"]))
+                                elems_template, coords_template = pdb_elements_coords_via_obabel(template["pdb"], config.get("tools", {}).get("known_openbabel_executable"))
+                                polymer_elems.extend(elems_template)
+                                role_templates.extend(_infer_template_roles(chain_type, elems_template, coords_template, template_index))
+                        inp = _write_packmol_full_pore_input(structure_dir, pore_atoms, polymer_templates, box, pore_radius, wall_buffer, end_buffer, seed, config)
+                        packmol_log = inp.parent / "packmol.log"
+                        packmol_ok = False
+                        packmol_failure = "packmol_not_found"
+                        if packmol:
+                            packmol_ok, packmol_failure = _run_packmol(inp, packmol, int(config.get("packing", {}).get("timeout_seconds", 300)))
+                            if packmol_ok:
+                                packmol_failure = ""
+                        if packmol_ok:
+                            try:
+                                packed_elems, packed_coords = pdb_elements_coords_via_obabel(inp.parent / "packed_full_pore.pdb", config.get("tools", {}).get("known_openbabel_executable"))
+                                expected_atoms = len(elems) + len(polymer_elems)
+                                if len(packed_coords) != expected_atoms:
+                                    raise ValueError(f"converted coordinate count {len(packed_coords)} != expected {expected_atoms}")
+                            except Exception as exc:
+                                packed_coords = []
+                                packed_elems = []
+                                packmol_ok = False
+                                packmol_failure = f"openbabel_conversion_failed: {exc}"
+                        if packmol_ok:
+                            n_pore = len(elems)
+                            all_elems = packed_elems
+                            combined_coords = np.array(packed_coords[: len(all_elems)], dtype=float)
+                            placed_polymer = combined_coords[n_pore:]
+                            inside_fraction = inside_pore_fraction(placed_polymer, box, pore_radius, wall_buffer, end_buffer)
+                            min_distance = min_cross_distance(all_elems, combined_coords, n_pore)
+                            usable = inside_fraction >= min_inside and min_distance >= min_silica
+                            packing_status = "packed_inside_pore" if usable else "polymer_not_inside_pore_or_overlap"
+                            status = "available" if usable else "unavailable_packmol_threshold_failed"
+                            atoms = atoms_from_elements(all_elems, combined_coords, 0)
+                            extxyz_path = str(structure_dir / "seed.extxyz")
+                            write_xyz(extxyz_path, atoms, box, ext=True)
+                            write_pdb(structure_dir / "seed.pdb", atoms, box)
+                            _write_atom_roles(structure_dir / "atom_roles.csv", n_pore, role_templates)
+                        else:
+                            inside_fraction = 0.0
+                            min_distance = 0.0
+                            usable = False
+                            status = "unavailable_packmol_failed"
+                            packing_status = packmol_failure
+                            extxyz_path = ""
+                        relaxation = {"lammps_relax_performed": False, "relax_is_training_data": False, "relax_is_production_md": False, "mlff_start_structure_kind": "raw_full_pore_seed", "mlff_start_extxyz_path": str(structure_dir / "seed.extxyz")}
+                        failure_reason = "" if usable else ("polymer_not_inside_pore_or_overlap" if packmol_ok else "packmol_failed_or_missing")
+                        metadata = {
+                            "full_pore_seed_id": sid,
+                            "status": status,
+                            "source_pore_model_id": pore["pore_model_id"],
+                            "purpose": "pilot_production_full_pore_relaxed_cp2k_crop_source",
+                            "polymer_architecture": composition,
+                            "pe_variant": "PE_HDPE_linear" if float(pe) > 0 else "",
+                            "pp_variant": "PP_atactic_like_v0" if float(pp) > 0 else "",
+                            "composition": composition,
+                            "loading_mode": loading,
+                            "seed": seed,
+                            "packing_method": "packmol_cylindrical_constraint",
+                            "packing_status": packing_status,
+                            "usable_for_mlff_start": bool(usable),
+                            "failure_reason": failure_reason,
+                            "polymer_inside_pore_fraction": inside_fraction,
+                            "min_polymer_silica_distance_A": min_distance,
+                            "packmol_input_path": str(inp),
+                            "packmol_log_path": str(packmol_log),
+                            "atom_roles_path": str(structure_dir / "atom_roles.csv"),
+                            "relaxation": relaxation,
+                        }
+                        (structure_dir / "metadata.yaml").write_text(yaml.safe_dump(metadata, sort_keys=False), encoding="utf-8")
+                        rows.append(
+                            {
+                                "full_pore_seed_id": sid,
+                                "status": status,
+                                "source_pore_model_id": pore["pore_model_id"],
+                                "extxyz_path": extxyz_path,
+                                "polymer_architecture": composition,
+                                "pe_variant": metadata["pe_variant"],
+                                "pp_variant": metadata["pp_variant"],
+                                "composition": composition,
+                                "loading_mode": loading,
+                                "seed": seed,
+                                "polymer_inside_pore_fraction": inside_fraction,
+                                "min_polymer_silica_distance_A": min_distance,
+                                "packing_method": "packmol_cylindrical_constraint",
+                                "packing_status": packing_status,
+                                "usable_for_mlff_start": bool(usable),
+                                "failure_reason": failure_reason,
+                                "packmol_input_path": str(inp),
+                                "packmol_log_path": str(packmol_log),
+                                "atom_roles_path": str(structure_dir / "atom_roles.csv"),
+                                "mlff_start_structure_kind": "raw_full_pore_seed",
+                            }
+                        )
+                        made += 1
+                    if made >= maxn:
+                        break
                 if made >= maxn:
                     break
-                seed = int(config["full_pore_seed_matrix"]["seeds"][0])
-                sid = f"full_pore_seed_{made + 1:04d}_PE{int(pe * 100):02d}_PP{int(pp * 100):02d}_seed{seed}"
-                structure_dir = outbase / sid
-                structure_dir.mkdir(parents=True, exist_ok=True)
-                pore_atoms = atoms_from_elements(elems, np.array(coords, dtype=float), 0)
-                polymer_templates: List[Path] = []
-                polymer_elems: List[str] = []
-                for chain_type, present in [("PE", pe > 0), ("PP", pp > 0)]:
-                    if not present:
-                        continue
-                    template_dir = structure_dir / "emc_chain_templates" / chain_type.lower()
-                    template = write_emc_chain_template(config, chain_type, int(config["full_pore_seed_matrix"]["chain_lengths_backbone"][0]), seed, template_dir)
-                    polymer_templates.append(Path(template["pdb"]))
-                    elems_template, _coords_template = pdb_elements_coords_via_obabel(template["pdb"], config.get("tools", {}).get("known_openbabel_executable"))
-                    polymer_elems.extend(elems_template)
-                inp = _write_packmol_full_pore_input(structure_dir, pore_atoms, polymer_templates, box, pore_radius, wall_buffer, end_buffer, seed, config)
-                packmol_log = inp.parent / "packmol.log"
-                packmol_ok = False
-                packmol_failure = "packmol_not_found"
-                if packmol:
-                    packmol_ok, packmol_failure = _run_packmol(inp, packmol, int(config.get("packing", {}).get("timeout_seconds", 300)))
-                    if packmol_ok:
-                        packmol_failure = ""
-                if packmol_ok:
-                    try:
-                        packed_elems, packed_coords = pdb_elements_coords_via_obabel(inp.parent / "packed_full_pore.pdb", config.get("tools", {}).get("known_openbabel_executable"))
-                        expected_atoms = len(elems) + len(polymer_elems)
-                        if len(packed_coords) != expected_atoms:
-                            raise ValueError(f"converted coordinate count {len(packed_coords)} != expected {expected_atoms}")
-                    except Exception as exc:
-                        packed_coords = []
-                        packed_elems = []
-                        packmol_ok = False
-                        packmol_failure = f"openbabel_conversion_failed: {exc}"
-                if packmol_ok:
-                    n_pore = len(elems)
-                    all_elems = packed_elems
-                    combined_coords = np.array(packed_coords[: len(all_elems)], dtype=float)
-                    placed_polymer = combined_coords[n_pore:]
-                    inside_fraction = inside_pore_fraction(placed_polymer, box, pore_radius, wall_buffer, end_buffer)
-                    min_distance = min_cross_distance(all_elems, combined_coords, n_pore)
-                    usable = inside_fraction >= min_inside and min_distance >= min_silica
-                    packing_status = "packed_inside_pore" if usable else "polymer_not_inside_pore_or_overlap"
-                    status = "available" if usable else "unavailable_packmol_threshold_failed"
-                    atoms = atoms_from_elements(all_elems, combined_coords, 0)
-                    extxyz_path = str(structure_dir / "seed.extxyz")
-                    write_xyz(extxyz_path, atoms, box, ext=True)
-                    write_pdb(structure_dir / "seed.pdb", atoms, box)
-                else:
-                    inside_fraction = 0.0
-                    min_distance = 0.0
-                    usable = False
-                    status = "unavailable_packmol_failed"
-                    packing_status = packmol_failure
-                    extxyz_path = ""
-                relaxation = {"lammps_relax_performed": False, "relax_is_training_data": False, "relax_is_production_md": False, "mlff_start_structure_kind": "raw_full_pore_seed", "mlff_start_extxyz_path": str(structure_dir / "seed.extxyz")}
-                failure_reason = "" if usable else ("polymer_not_inside_pore_or_overlap" if packmol_ok else "packmol_failed_or_missing")
-                metadata = {
-                    "full_pore_seed_id": sid,
-                    "status": status,
-                    "source_pore_model_id": pore["pore_model_id"],
-                    "purpose": "mlff_exploration_seed_only_no_mlff_run",
-                    "packing_method": "packmol_cylindrical_constraint",
-                    "packing_status": packing_status,
-                    "usable_for_mlff_start": bool(usable),
-                    "failure_reason": failure_reason,
-                    "polymer_inside_pore_fraction": inside_fraction,
-                    "min_polymer_silica_distance_A": min_distance,
-                    "packmol_input_path": str(inp),
-                    "packmol_log_path": str(packmol_log),
-                    "relaxation": relaxation,
-                }
-                (structure_dir / "metadata.yaml").write_text(yaml.safe_dump(metadata, sort_keys=False), encoding="utf-8")
-                rows.append(
-                    {
-                        "full_pore_seed_id": sid,
-                        "status": status,
-                        "source_pore_model_id": pore["pore_model_id"],
-                        "extxyz_path": extxyz_path,
-                        "polymer_inside_pore_fraction": inside_fraction,
-                        "min_polymer_silica_distance_A": min_distance,
-                        "packing_method": "packmol_cylindrical_constraint",
-                        "packing_status": packing_status,
-                        "usable_for_mlff_start": bool(usable),
-                        "failure_reason": failure_reason,
-                        "packmol_input_path": str(inp),
-                        "packmol_log_path": str(packmol_log),
-                        "mlff_start_structure_kind": "raw_full_pore_seed",
-                    }
-                )
-                made += 1
     manifest = outbase / "full_pore_seed_manifest.csv"
     pd.DataFrame(rows).to_csv(manifest, index=False)
     return manifest
-

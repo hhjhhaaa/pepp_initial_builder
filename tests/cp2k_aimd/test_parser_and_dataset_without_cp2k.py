@@ -163,11 +163,11 @@ def test_dataset_split_keeps_same_structure_block_together(tmp_path):
             encoding="utf-8",
         )
     (parsed / "cp2k_parsed_manifest.csv").write_text(
-        "aimd_structure_id,family,patch_id,label_mode,status,usable_frame_count,failure_reason,frames_extxyz_path\n"
-        f"s1,pe_near_silanol_wall,patch_A,sp_force,parsed_real_cp2k_output,1,,{parsed / 's1_sp.extxyz'}\n"
-        f"s1,pe_near_silanol_wall,patch_A,short_aimd,parsed_real_cp2k_output,1,,{parsed / 's1_md.extxyz'}\n"
-        f"s2,pe_near_silanol_wall,patch_B,sp_force,parsed_real_cp2k_output,1,,{parsed / 's2_sp.extxyz'}\n"
-        f"s2,pe_near_silanol_wall,patch_B,short_aimd,parsed_real_cp2k_output,1,,{parsed / 's2_md.extxyz'}\n",
+        "aimd_structure_id,family,crop_family,patch_id,label_mode,cp2k_run_type,source_stage,polymer_architecture,status,usable_frame_count,failure_reason,frames_extxyz_path\n"
+        f"s1,pe_near_silanol_wall,pe_near_silanol_wall,patch_A,sp_force,ENERGY_FORCE,lammps_relaxed_full_pore,PE_HDPE100_PP00,parsed_real_cp2k_output,1,,{parsed / 's1_sp.extxyz'}\n"
+        f"s1,pe_near_silanol_wall,pe_near_silanol_wall,patch_A,short_aimd,MD,lammps_relaxed_full_pore,PE_HDPE100_PP00,parsed_real_cp2k_output,1,,{parsed / 's1_md.extxyz'}\n"
+        f"s2,pe_near_silanol_wall,pe_near_silanol_wall,patch_B,sp_force,ENERGY_FORCE,lammps_relaxed_full_pore,PE00_PP100,parsed_real_cp2k_output,1,,{parsed / 's2_sp.extxyz'}\n"
+        f"s2,pe_near_silanol_wall,pe_near_silanol_wall,patch_B,short_aimd,MD,lammps_relaxed_full_pore,PE00_PP100,parsed_real_cp2k_output,1,,{parsed / 's2_md.extxyz'}\n",
         encoding="utf-8",
     )
 

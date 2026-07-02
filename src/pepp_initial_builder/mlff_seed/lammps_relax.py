@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from pepp_initial_builder.common.run import run_id
 from pepp_initial_builder.pore.config import ensure_pore_dirs, pore_root
 from pepp_initial_builder.pore.porems_builder import read_xyz_like
 
@@ -133,7 +134,8 @@ def _write_combined_lammps_data(seed_extxyz: Path, template_dirs: Sequence[Path]
     return n_silica, n_polymer
 
 
-def _write_lammps_input(path: Path, high_steps: int, target_steps: int, cfg: Dict[str, Any]) -> None:
+def _write_lammps_input(path: Path, warmup_steps: int, high_steps: int, cool_steps: int, target_steps: int, cfg: Dict[str, Any]) -> None:
+    initial_temp = float(cfg.get("initial_temperature_K", 300.0))
     temp = float(cfg.get("temperature_K", 523.0))
     high_temp = float(cfg.get("high_temperature_K", 650.0))
     timestep = float(cfg.get("timestep_fs", 0.5))
@@ -172,18 +174,28 @@ thermo_style custom step c_tpoly pe ke etotal press atoms
 min_style fire
 minimize {cfg.get("minimize_etol", "1.0e-6")} {cfg.get("minimize_ftol", "1.0e-8")} {int(cfg.get("minimize_maxiter", 5000))} {int(cfg.get("minimize_maxeval", 20000))}
 
-# Stage 1: high-temperature NVT anneal of the mobile polymer inside the fixed pore.
-velocity polymer create {high_temp:.3f} 91023 mom yes rot yes dist gaussian
+# Stage 1: polymer-only warmup inside the fixed silica pore.
+velocity polymer create {initial_temp:.3f} 91023 mom yes rot yes dist gaussian
 timestep {timestep:.6f}
-fix int polymer nvt temp {high_temp:.3f} {high_temp:.3f} 100.0
+fix int polymer nvt temp {initial_temp:.3f} {temp:.3f} 100.0
 fix mom polymer momentum 200 linear 1 1 1
 dump relax_dump all custom {dump_every} relax.lammpstrj id mol type q x y z
 dump_modify relax_dump sort id
+run {warmup_steps}
+unfix int
+
+# Stage 2: high-temperature NVT anneal of the mobile polymer inside the fixed pore.
+fix int polymer nvt temp {high_temp:.3f} {high_temp:.3f} 100.0
 run {high_steps}
 unfix int
 
-# Stage 2: cool to target temperature and continue NVT pre-equilibration before CP2K crops.
+# Stage 3: cool to target temperature without changing the fixed pore cell.
 fix int polymer nvt temp {high_temp:.3f} {temp:.3f} 100.0
+run {cool_steps}
+unfix int
+
+# Stage 4: target-temperature NVT hold. CP2K crops are sampled only from this equilibrated tail.
+fix int polymer nvt temp {temp:.3f} {temp:.3f} 100.0
 run {target_steps}
 write_data relaxed.data
 write_dump all custom relaxed_snapshot.dump id mol type q x y z modify sort id
@@ -209,23 +221,289 @@ def _dump_to_extxyz(dump: Path, out: Path, box: Tuple[float, float, float]) -> N
             handle.write(f"{elem_by_type[type_id]} {x:.10f} {y:.10f} {z:.10f}\n")
 
 
+def _parse_thermo_log(path: Path) -> List[Dict[str, float]]:
+    rows: List[Dict[str, float]] = []
+    if not path.exists():
+        return rows
+    header: List[str] = []
+    for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        parts = line.split()
+        if len(parts) >= 6 and parts[0] == "Step" and ("c_tpoly" in parts or "Temp" in parts):
+            header = parts
+            continue
+        if not header or len(parts) < len(header):
+            continue
+        try:
+            values = [float(x) for x in parts[: len(header)]]
+        except Exception:
+            continue
+        rows.append(dict(zip(header, values)))
+    return rows
+
+
+def _min_distances_to_silica(elems: Sequence[str], coords: np.ndarray, n_silica: int, atom_ids: Sequence[int]) -> List[float]:
+    silica_heavy = [idx for idx in range(min(n_silica, len(elems))) if elems[idx] in {"Si", "O"}]
+    if not silica_heavy:
+        return [float("inf") for _idx in atom_ids]
+    silica_coords = coords[silica_heavy]
+    distances = []
+    for idx in atom_ids:
+        distances.append(float(np.min(np.linalg.norm(silica_coords - coords[idx], axis=1))))
+    return distances
+
+
+def _relax_metrics(
+    config: Dict[str, Any],
+    row: Dict[str, Any],
+    seed_dir: Path,
+    relaxed_path: str,
+    n_silica: int,
+    warmup_steps: int,
+    high_steps: int,
+    cool_steps: int,
+    target_steps: int,
+) -> Dict[str, Any]:
+    gate = config.get("relax_quality_gate", {})
+    relax_cfg = config.get("lammps_full_pore_relax", {})
+    timestep_fs = float(relax_cfg.get("timestep_fs", 0.5))
+    thermo = _parse_thermo_log(seed_dir / "lammps_relax" / "lammps_relax.log")
+    hold_start = float(warmup_steps + high_steps + cool_steps)
+    hold_rows = [r for r in thermo if r.get("Step", 0.0) >= hold_start]
+    temps = [float(r.get("c_tpoly", r.get("Temp", float("nan")))) for r in hold_rows if np.isfinite(r.get("c_tpoly", r.get("Temp", float("nan"))))]
+    target_temp = float(gate.get("target_temperature_K", relax_cfg.get("temperature_K", 523.0)))
+    temp_mean = float(np.mean(temps)) if temps else float("nan")
+    temp_std = float(np.std(temps)) if temps else float("nan")
+    final_thermo = hold_rows[-1] if hold_rows else (thermo[-1] if thermo else {})
+    metrics: Dict[str, Any] = {
+        "run_id": run_id(config),
+        "full_pore_seed_id": row.get("full_pore_seed_id", ""),
+        "polymer_architecture": row.get("polymer_architecture", ""),
+        "pe_variant": row.get("pe_variant", ""),
+        "pp_variant": row.get("pp_variant", ""),
+        "composition": row.get("composition", ""),
+        "loading_mode": row.get("loading_mode", ""),
+        "seed": row.get("seed", ""),
+        "time_ps": (warmup_steps + high_steps + cool_steps + target_steps) * timestep_fs / 1000.0,
+        "temperature_K": temp_mean,
+        "hold_temperature_mean_K": temp_mean,
+        "hold_temperature_std_K": temp_std,
+        "potential_energy": final_thermo.get("PotEng", ""),
+        "total_energy": final_thermo.get("TotEng", ""),
+        "polymer_inside_pore_fraction": 0.0,
+        "min_polymer_silica_distance_A": 0.0,
+        "polymer_silica_contact_count_3p5A": 0,
+        "polymer_silica_contact_count_5p0A": 0,
+        "mean_wall_distance_A": "",
+        "pe_near_wall_fraction": "",
+        "pp_near_wall_fraction": "",
+        "usable_for_cp2k_crop": False,
+        "failure_reason": "",
+    }
+    try:
+        elems, coords_list, box = read_xyz_like(Path(relaxed_path))
+        coords = np.array(coords_list, dtype=float)
+        polymer_ids = [idx for idx in range(n_silica, len(elems)) if elems[idx] in {"C", "H"}]
+        polymer_heavy = [idx for idx in polymer_ids if elems[idx] == "C"]
+        center = (box[0] / 2.0, box[1] / 2.0)
+        radius = max(np.min(np.linalg.norm(coords[:n_silica, :2] - np.array(center), axis=1)) - 1.0, 0.5)
+        zmin = float(config.get("full_pore_seed", {}).get("end_buffer_A", 3.0))
+        zmax = float(box[2]) - zmin
+        if polymer_ids:
+            radial = np.linalg.norm(coords[polymer_ids, :2] - np.array(center), axis=1)
+            z = coords[polymer_ids, 2]
+            inside = (radial < radius) & (z > zmin) & (z < zmax)
+            metrics["polymer_inside_pore_fraction"] = float(np.mean(inside))
+        distances = _min_distances_to_silica(elems, coords, n_silica, polymer_heavy)
+        if distances:
+            arr = np.array(distances, dtype=float)
+            metrics["min_polymer_silica_distance_A"] = float(np.min(arr))
+            metrics["polymer_silica_contact_count_3p5A"] = int(np.sum(arr <= 3.5))
+            metrics["polymer_silica_contact_count_5p0A"] = int(np.sum(arr <= 5.0))
+            metrics["mean_wall_distance_A"] = float(np.mean(arr))
+        roles_path = seed_dir / "atom_roles.csv"
+        if roles_path.exists() and distances:
+            roles = pd.read_csv(roles_path)
+            dist_by_atom = {atom_id + 1: dist for atom_id, dist in zip(polymer_heavy, distances)}
+            near = {atom for atom, dist in dist_by_atom.items() if dist <= 5.0}
+            pe_atoms = set(int(x) for x in roles.loc[roles.get("polymer_type", "") == "PE", "atom_id"].tolist())
+            pp_atoms = set(int(x) for x in roles.loc[roles.get("polymer_type", "") == "PP", "atom_id"].tolist())
+            metrics["pe_near_wall_fraction"] = float(len(pe_atoms & near) / max(len(pe_atoms), 1))
+            metrics["pp_near_wall_fraction"] = float(len(pp_atoms & near) / max(len(pp_atoms), 1))
+        max_abs = float(np.max(np.abs(coords))) if len(coords) else float("inf")
+        temp_ok = bool(temps) and abs(temp_mean - target_temp) <= float(gate.get("hold_temperature_mean_tolerance_K", 50.0)) and temp_std <= float(gate.get("hold_temperature_std_max_K", 80.0))
+        inside_ok = metrics["polymer_inside_pore_fraction"] >= float(gate.get("min_polymer_inside_pore_fraction", 0.95))
+        dist_ok = metrics["min_polymer_silica_distance_A"] >= float(gate.get("min_polymer_silica_distance_A", 1.6))
+        contact_ok = metrics["polymer_silica_contact_count_3p5A"] >= int(gate.get("min_contact_count_3p5A", 1)) or metrics["polymer_silica_contact_count_5p0A"] >= int(gate.get("min_contact_count_5p0A", 10))
+        sane_ok = max_abs <= float(gate.get("max_abs_coordinate_A", 100000.0))
+        failures = []
+        if not temp_ok:
+            failures.append("hold_temperature_not_stable")
+        if not inside_ok:
+            failures.append("polymer_not_inside_pore")
+        if not dist_ok:
+            failures.append("polymer_silica_overlap")
+        if not contact_ok:
+            failures.append("no_polymer_silica_wall_contact")
+        if not sane_ok:
+            failures.append("exploding_atoms_coordinate_sanity_failed")
+        metrics["usable_for_cp2k_crop"] = not failures
+        metrics["failure_reason"] = ";".join(failures)
+    except Exception as exc:
+        metrics["failure_reason"] = f"relax_metrics_failed:{exc}"
+    return metrics
+
+
+def _write_relax_products(config: Dict[str, Any], relax_rows: List[Dict[str, Any]], metric_rows: List[Dict[str, Any]], suffix: str = "") -> None:
+    root = pore_root(config)
+    logs_dir = root / config["paths"].get("logs_dir", "outputs/logs")
+    exports_dir = root / config["paths"].get("aimd_exports_dir", config["paths"].get("exports_dir", "data/exports"))
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    exports_dir.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(metric_rows).to_csv(logs_dir / f"full_pore_relax_metrics{suffix}.csv", index=False)
+    metric_by_id = {str(row.get("full_pore_seed_id", "")): row for row in metric_rows}
+    snapshot_rows = []
+    for row in relax_rows:
+        seed_id = str(row.get("full_pore_seed_id", ""))
+        metric = metric_by_id.get(seed_id, {})
+        relaxed = str(row.get("relaxed_extxyz_path", ""))
+        if row.get("status") != "lammps_relaxed_full_pore" or not relaxed:
+            continue
+        snapshot_rows.append(
+            {
+                "run_id": run_id(config),
+                "full_pore_seed_id": seed_id,
+                "source_full_pore_id": seed_id,
+                "source_stage": "lammps_relaxed_full_pore",
+                "snapshot_kind": "final_relaxed_structure",
+                "snapshot_path": relaxed,
+                "source_snapshot_path": relaxed,
+                "frame_index": 0,
+                "source_frame_index": 0,
+                "time_ps": row.get("lammps_total_time_ps", ""),
+                "temperature_K": metric.get("temperature_K", ""),
+                "from_last_fraction": True,
+                "usable_for_cp2k_crop": bool(metric.get("usable_for_cp2k_crop", False)),
+                "failure_reason": metric.get("failure_reason", ""),
+                "polymer_architecture": row.get("polymer_architecture", ""),
+                "pe_variant": row.get("pe_variant", ""),
+                "pp_variant": row.get("pp_variant", ""),
+                "composition": row.get("composition", ""),
+                "loading_mode": row.get("loading_mode", ""),
+                "seed": row.get("seed", ""),
+                "atom_roles_path": row.get("atom_roles_path", ""),
+                "n_silica_atoms_fixed": row.get("n_silica_atoms_fixed", ""),
+            }
+        )
+    pd.DataFrame(snapshot_rows).to_csv(exports_dir / f"full_pore_snapshot_manifest{suffix}.csv", index=False)
+
+
+def collect_lammps_relax_manifests(config: Dict[str, Any]) -> Path:
+    root = pore_root(config)
+    structures_dir = root / config["paths"]["full_pore_seed_structures_dir"]
+    logs_dir = root / config["paths"].get("logs_dir", "outputs/logs")
+    exports_dir = root / config["paths"].get("aimd_exports_dir", config["paths"].get("exports_dir", "data/exports"))
+    manifest_parts = sorted(structures_dir.glob("lammps_relax_manifest.task*.csv"))
+    metric_parts = sorted(logs_dir.glob("full_pore_relax_metrics.task*.csv"))
+    snapshot_parts = sorted(exports_dir.glob("full_pore_snapshot_manifest.task*.csv"))
+    for parts, out in [
+        (manifest_parts, structures_dir / "lammps_relax_manifest.csv"),
+        (metric_parts, logs_dir / "full_pore_relax_metrics.csv"),
+        (snapshot_parts, exports_dir / "full_pore_snapshot_manifest.csv"),
+    ]:
+        frames = [pd.read_csv(path) for path in parts if path.exists()]
+        if frames:
+            pd.concat(frames, ignore_index=True).to_csv(out, index=False)
+    return exports_dir / "full_pore_snapshot_manifest.csv"
+
+
+def write_lammps_relax_array_script(config: Dict[str, Any], mode: str = "pilot") -> Path:
+    root = pore_root(config)
+    jobs_dir = root / config["paths"].get("jobs_dir", "outputs/jobs")
+    jobs_dir.mkdir(parents=True, exist_ok=True)
+    seed_manifest = root / config["paths"]["full_pore_seed_structures_dir"] / "full_pore_seed_manifest.csv"
+    count = 0
+    if seed_manifest.exists():
+        rows = pd.read_csv(seed_manifest)
+        count = int((rows.get("status", pd.Series(dtype=str)).astype(str).str.startswith("available")).sum())
+    array_max = max(count - 1, 0)
+    partition = str(config.get("hpc", {}).get("partition", "batch")) if config.get("hpc") else "batch"
+    script = jobs_dir / "run_lammps_relax_array.sbatch"
+    lmp = config.get("tools", {}).get("known_lammps_executable") or "__SET_LAMMPS_EXECUTABLE_ON_HPC__"
+    script.write_text(
+        f"""#!/bin/bash
+#SBATCH --job-name=pepp_lammps_relax
+#SBATCH --partition={partition}
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=32
+#SBATCH --time=96:00:00
+#SBATCH --array=0-{array_max}
+
+set -euo pipefail
+export LAMMPS_EXECUTABLE="{lmp}"
+PYTHON_CMD=${{PYTHON_CMD:-python}}
+if ! command -v "$PYTHON_CMD" >/dev/null 2>&1; then
+  PYTHON_CMD=python3
+fi
+"$PYTHON_CMD" - <<'PY'
+import os
+from pepp_initial_builder.pore.config import load_pore_config
+from pepp_initial_builder.mlff_seed.lammps_relax import write_lammps_relax_inputs
+cfg = load_pore_config("configs/mlff_seed.yaml")
+cfg.setdefault("tools", {{}})["known_lammps_executable"] = os.environ["LAMMPS_EXECUTABLE"]
+cfg["runtime_filter"] = {{"available_seed_index": int(os.environ.get("SLURM_ARRAY_TASK_ID", "0"))}}
+write_lammps_relax_inputs(cfg, "{mode}")
+PY
+""",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+    collect = jobs_dir / "collect_lammps_relax_manifests.sh"
+    collect.write_text(
+        """#!/bin/bash
+set -euo pipefail
+PYTHON_CMD=${PYTHON_CMD:-python}
+if ! command -v "$PYTHON_CMD" >/dev/null 2>&1; then
+  PYTHON_CMD=python3
+fi
+"$PYTHON_CMD" scripts/mlff_seed/collect_lammps_relax.py --config configs/mlff_seed.yaml
+""",
+        encoding="utf-8",
+    )
+    collect.chmod(0o755)
+    return script
+
+
 def write_lammps_relax_inputs(config: Dict[str, Any], mode: str = "tiny") -> Path:
     ensure_pore_dirs(config)
     root = pore_root(config)
-    out = root / config["paths"]["full_pore_seed_structures_dir"] / "lammps_relax_manifest.csv"
+    runtime_filter = config.get("runtime_filter", {})
+    selected_available_index = runtime_filter.get("available_seed_index")
+    suffix = f".task{selected_available_index}" if selected_available_index is not None else ""
+    out = root / config["paths"]["full_pore_seed_structures_dir"] / f"lammps_relax_manifest{suffix}.csv"
     out.parent.mkdir(parents=True, exist_ok=True)
     seed_manifest = root / config["paths"]["full_pore_seed_structures_dir"] / "full_pore_seed_manifest.csv"
     lmp = _lammps_executable(config)
     relax_cfg = config.get("lammps_full_pore_relax", {})
     high_steps = int(relax_cfg.get(f"{mode}_high_temp_steps", 10000))
+    warmup_steps = int(relax_cfg.get(f"{mode}_warmup_steps", 0))
+    cool_steps = int(relax_cfg.get(f"{mode}_cool_steps", 0))
     target_steps = int(relax_cfg.get(f"{mode}_target_temp_steps", 10000))
     rows = []
+    metric_rows = []
+    available_counter = -1
     if not seed_manifest.exists():
         rows.append({"full_pore_seed_id": "no_full_pore_seed_manifest", "status": "skipped_no_full_pore_seed_manifest", "raw_seed_extxyz_path": "", "relaxed_extxyz_path": "", "relax_is_training_data": False, "relax_is_production_md": False})
         pd.DataFrame(rows).to_csv(out, index=False)
+        _write_relax_products(config, rows, metric_rows, suffix)
+        write_lammps_relax_array_script(config, mode)
         return out
     for row in pd.read_csv(seed_manifest).to_dict("records"):
         seed_id = str(row.get("full_pore_seed_id", ""))
+        if str(row.get("status", "")).startswith("available"):
+            available_counter += 1
+        if selected_available_index is not None and available_counter != int(selected_available_index):
+            continue
         seed_extxyz = Path(str(row.get("extxyz_path", "")))
         seed_dir = seed_extxyz.parent
         relax_dir = seed_dir / "lammps_relax"
@@ -245,7 +523,7 @@ def write_lammps_relax_inputs(config: Dict[str, Any], mode: str = "tiny") -> Pat
                 raise RuntimeError("emc_chain_templates_missing")
             _copy_polymer_params(template_dirs, relax_dir / "polymer.params")
             n_silica, n_polymer = _write_combined_lammps_data(seed_extxyz, template_dirs, relax_dir / "full_pore_relax.data")
-            _write_lammps_input(relax_dir / "in.relax", high_steps, target_steps, relax_cfg)
+            _write_lammps_input(relax_dir / "in.relax", warmup_steps, high_steps, cool_steps, target_steps, relax_cfg)
             proc = subprocess.run([lmp, "-in", "in.relax"], cwd=relax_dir, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False, timeout=int(relax_cfg.get("timeout_seconds", 1800)))
             (relax_dir / "lammps_relax.log").write_text(proc.stdout, encoding="utf-8")
             if proc.returncode != 0:
@@ -265,16 +543,23 @@ def write_lammps_relax_inputs(config: Dict[str, Any], mode: str = "tiny") -> Pat
                 "mlff_start_extxyz_path": relaxed_path,
                 "lammps_relax_dir": str(relax_dir),
                 "temperature_K": float(relax_cfg.get("temperature_K", 523.0)),
+                "initial_temperature_K": float(relax_cfg.get("initial_temperature_K", 300.0)),
                 "high_temperature_K": float(relax_cfg.get("high_temperature_K", 650.0)),
                 "timestep_fs": float(relax_cfg.get("timestep_fs", 0.5)),
+                "lammps_warmup_steps": warmup_steps,
                 "lammps_high_temp_steps": high_steps,
+                "lammps_cool_steps": cool_steps,
                 "lammps_target_temp_steps": target_steps,
-                "lammps_total_steps": high_steps + target_steps,
-                "lammps_total_time_ps": (high_steps + target_steps) * float(relax_cfg.get("timestep_fs", 0.5)) / 1000.0,
+                "lammps_total_steps": warmup_steps + high_steps + cool_steps + target_steps,
+                "lammps_total_time_ps": (warmup_steps + high_steps + cool_steps + target_steps) * float(relax_cfg.get("timestep_fs", 0.5)) / 1000.0,
+                "lammps_protocol": relax_cfg.get("protocol", "fixed_silica_pore_polymer_multistage_anneal_v1"),
+                "full_pore_box_compression": bool(relax_cfg.get("full_pore_box_compression", False)),
                 "n_silica_atoms_fixed": n_silica,
                 "n_polymer_atoms_mobile": n_polymer,
             }
             metadata_path.write_text(yaml.safe_dump(metadata, sort_keys=False), encoding="utf-8")
+            metric = _relax_metrics(config, row, seed_dir, relaxed_path, n_silica, warmup_steps, high_steps, cool_steps, target_steps)
+            metric_rows.append(metric)
         except Exception as exc:
             status = "failed_lammps_relax"
             reason = str(exc)
@@ -290,13 +575,30 @@ def write_lammps_relax_inputs(config: Dict[str, Any], mode: str = "tiny") -> Pat
                 "relax_is_production_md": False,
                 "lammps_relax_dir": str(relax_dir),
                 "temperature_K": float(relax_cfg.get("temperature_K", 523.0)),
+                "initial_temperature_K": float(relax_cfg.get("initial_temperature_K", 300.0)),
                 "high_temperature_K": float(relax_cfg.get("high_temperature_K", 650.0)),
                 "timestep_fs": float(relax_cfg.get("timestep_fs", 0.5)),
+                "lammps_warmup_steps": warmup_steps,
                 "lammps_high_temp_steps": high_steps,
+                "lammps_cool_steps": cool_steps,
                 "lammps_target_temp_steps": target_steps,
-                "lammps_total_steps": high_steps + target_steps,
-                "lammps_total_time_ps": (high_steps + target_steps) * float(relax_cfg.get("timestep_fs", 0.5)) / 1000.0,
+                "lammps_total_steps": warmup_steps + high_steps + cool_steps + target_steps,
+                "lammps_total_time_ps": (warmup_steps + high_steps + cool_steps + target_steps) * float(relax_cfg.get("timestep_fs", 0.5)) / 1000.0,
+                "lammps_protocol": relax_cfg.get("protocol", "fixed_silica_pore_polymer_multistage_anneal_v1"),
+                "full_pore_box_compression": bool(relax_cfg.get("full_pore_box_compression", False)),
+                "polymer_architecture": row.get("polymer_architecture", ""),
+                "pe_variant": row.get("pe_variant", ""),
+                "pp_variant": row.get("pp_variant", ""),
+                "composition": row.get("composition", ""),
+                "loading_mode": row.get("loading_mode", ""),
+                "seed": row.get("seed", ""),
+                "atom_roles_path": row.get("atom_roles_path", ""),
+                "n_silica_atoms_fixed": locals().get("n_silica", ""),
             }
         )
     pd.DataFrame(rows).to_csv(out, index=False)
+    _write_relax_products(config, rows, metric_rows, suffix)
+    if selected_available_index is None:
+        collect_lammps_relax_manifests(config)
+    write_lammps_relax_array_script(config, mode)
     return out

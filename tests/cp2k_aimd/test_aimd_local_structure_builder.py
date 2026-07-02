@@ -10,8 +10,9 @@ def test_aimd_local_structure_builder(tmp_path):
     write_relaxed_full_pore_source(cfg, tmp_path)
     manifest = build_aimd_local_structures(cfg, "tiny")
     df = pd.read_csv(manifest)
-    assert len(df[df["status"] == "available"]) > 0
-    assert df["extxyz_path"].iloc[0].endswith(".extxyz")
+    available = df[df["status"] == "available"]
+    assert len(available) > 0
+    assert available["extxyz_path"].iloc[0].endswith(".extxyz")
     assert set(df["crop_source"]) == {"full_pore_snapshot"}
     assert set(df["source_stage"]) == {"lammps_relaxed_full_pore"}
     assert "source_full_pore_id" in df.columns

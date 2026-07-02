@@ -6,7 +6,7 @@ from pepp_initial_builder.common.cli import config_path, mode_from_args, workflo
 from pepp_initial_builder.cp2k_aimd.config import load_cp2k_config
 from pepp_initial_builder.cp2k_aimd.dataset_builder import build_aimd_dataset
 from pepp_initial_builder.cp2k_aimd.hpc_jobs import make_hpc_cp2k_jobs
-from pepp_initial_builder.cp2k_aimd.input_writer import write_cp2k_label_inputs
+from pepp_initial_builder.cp2k_aimd.input_writer import select_short_aimd_from_successful_sp, write_cp2k_label_inputs
 from pepp_initial_builder.cp2k_aimd.manifest import export_aimd_dataset_manifest
 from pepp_initial_builder.cp2k_aimd.parser import parse_cp2k_outputs
 from pepp_initial_builder.cp2k_aimd.seed_patch_builder import build_aimd_local_structures
@@ -32,6 +32,11 @@ def build_seed_structures_main(argv: Sequence[str] | None = None) -> None:
 def write_cp2k_inputs_main(argv: Sequence[str] | None = None) -> None:
     args = _parser().parse_args(argv)
     print(write_cp2k_label_inputs(load_cp2k_config(config_path(args.config)), mode_from_args(args)))
+
+
+def select_short_aimd_main(argv: Sequence[str] | None = None) -> None:
+    args = _parser().parse_args(argv)
+    print(select_short_aimd_from_successful_sp(load_cp2k_config(config_path(args.config))))
 
 
 def make_hpc_jobs_main(argv: Sequence[str] | None = None) -> None:

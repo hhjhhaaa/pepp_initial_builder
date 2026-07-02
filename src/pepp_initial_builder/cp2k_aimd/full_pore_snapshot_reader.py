@@ -60,14 +60,16 @@ def read_full_pore_snapshot_sources(config: Dict[str, Any]) -> List[Dict[str, st
     paths = config.get("paths", {})
     allowed_stages = set(config.get("cp2k_crop", {}).get("source_priority", ["lammps_relaxed_full_pore", "lammps_exploration_snapshot"]))
     allowed_stages.discard("raw_full_pore_seed")
-    candidates = [
-        p(config, "exports_dir") / "full_pore_snapshot_manifest.csv",
-        p(config, "exports_dir") / "mlff_seed_manifest.csv",
-        p(config, "full_pore_seed_structures_dir") / "lammps_relax_manifest.csv",
-        p(config, "full_pore_seed_structures_dir") / "full_pore_seed_manifest.csv",
-    ]
+    snapshot_manifest = p(config, "exports_dir") / "full_pore_snapshot_manifest.csv"
+    candidates = [snapshot_manifest]
     if paths.get("full_pore_snapshot_manifest"):
-        candidates.insert(1, Path(paths["full_pore_snapshot_manifest"]))
+        candidates.insert(0, Path(paths["full_pore_snapshot_manifest"]))
+    if not config.get("cp2k_crop", {}).get("require_snapshot_manifest", False):
+        candidates += [
+            p(config, "exports_dir") / "mlff_seed_manifest.csv",
+            p(config, "full_pore_seed_structures_dir") / "lammps_relax_manifest.csv",
+            p(config, "full_pore_seed_structures_dir") / "full_pore_seed_manifest.csv",
+        ]
     rows: List[Dict[str, str]] = []
     seen: set[tuple[str, str, str]] = set()
     for manifest in candidates:
@@ -86,6 +88,13 @@ def read_full_pore_snapshot_sources(config: Dict[str, Any]) -> List[Dict[str, st
             status_ok = (not status) or status.startswith("available") or status == "lammps_relaxed_full_pore"
             if not status_ok:
                 continue
+            if config.get("cp2k_crop", {}).get("require_snapshot_manifest", False):
+                if normalized["source_stage"] != "lammps_relaxed_full_pore":
+                    continue
+                if str(normalized.get("from_last_fraction", "")).lower() not in {"true", "1", "yes"}:
+                    continue
+                if str(normalized.get("usable_for_cp2k_crop", "")).lower() not in {"true", "1", "yes"}:
+                    continue
             if normalized["usable_for_mlff_start"] == "false":
                 continue
             rows.append(normalized)
