@@ -1,5 +1,13 @@
-from _cp2k_cli import load, mode, parser
-from pepp_initial_builder.cp2k_workflow import make_hpc_cp2k_jobs
+from pathlib import Path
+import sys
 
-args = parser().parse_args()
-print(make_hpc_cp2k_jobs(load(args), mode(args)))
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from pepp_initial_builder.cp2k_aimd.cli import make_hpc_jobs_main
+
+
+if __name__ == "__main__":
+    if "--config" not in sys.argv:
+        sys.argv.extend(["--config", "configs/cp2k_dataset.yaml"])
+    make_hpc_jobs_main()

@@ -1,9 +1,81 @@
-from pathlib import Path
-import argparse, sys
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'src'))
-from pepp_initial_builder.core import load_config
-from pepp_initial_builder.core import discover_tools, write_discovery_report
-import json
-p=argparse.ArgumentParser(); p.add_argument('--config',default='configs/initial_builder.yaml'); a=p.parse_args(); c=load_config(ROOT/a.config); print(json.dumps(discover_tools(c),indent=2)); print(f'wrote {write_discovery_report(c)}')
+from __future__ import annotations
 
+import argparse
+import importlib
+import json
+import shutil
+import sys
+from pathlib import Path
+
+import yaml
+
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+
+def _module_status(name: str) -> str:
+    try:
+        importlib.import_module(name)
+        return "FOUND"
+    except Exception as exc:
+        return f"MISSING: {exc}"
+
+
+def _load_yaml(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    with path.open("r", encoding="utf-8") as handle:
+        return yaml.safe_load(handle) or {}
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--polymer-config", default="configs/polymer.yaml")
+    parser.add_argument("--cp2k-config", default="configs/cp2k_aimd.yaml")
+    args = parser.parse_args()
+
+    polymer_config = _load_yaml(ROOT / args.polymer_config)
+    cp2k_config = _load_yaml(ROOT / args.cp2k_config)
+    tools = polymer_config.get("tools", {})
+    cp2k_paths = cp2k_config.get("paths", {})
+    hpc = cp2k_config.get("hpc", {})
+
+    report = {
+        "python_executable": sys.executable,
+        "python_version": sys.version.split()[0],
+        "package_import_pepp_initial_builder": _module_status("pepp_initial_builder"),
+        "python_modules": {
+            "numpy": _module_status("numpy"),
+            "pandas": _module_status("pandas"),
+            "yaml": _module_status("yaml"),
+            "ase": _module_status("ase"),
+        },
+        "packmol": {
+            "configured": tools.get("known_packmol_executable"),
+            "found": shutil.which("packmol") or (tools.get("known_packmol_executable") if Path(str(tools.get("known_packmol_executable", ""))).exists() else None),
+        },
+        "lammps": {
+            "configured": tools.get("known_lammps_executable"),
+            "found": shutil.which("lmp") or shutil.which("lammps") or (tools.get("known_lammps_executable") if Path(str(tools.get("known_lammps_executable", ""))).exists() else None),
+        },
+        "porems_external_python": {
+            "hint": cp2k_config.get("tools", {}).get("porems_path_hint"),
+            "python_import": _module_status("porems"),
+        },
+        "cp2k_local_command_optional": {
+            "cp2k.psmp": shutil.which("cp2k.psmp"),
+            "cp2k": shutil.which("cp2k"),
+            "required_locally": False,
+        },
+        "hpc_cp2k_module_placeholder": hpc.get("cp2k_module_placeholder", "__SET_CP2K_MODULE_ON_HPC__"),
+        "lmp_proj": {
+            "path": cp2k_paths.get("lmp_proj_root", "/home/jinhao/lmp-proj"),
+            "exists": Path(cp2k_paths.get("lmp_proj_root", "/home/jinhao/lmp-proj")).exists(),
+        },
+    }
+    print(json.dumps(report, indent=2))
+
+
+if __name__ == "__main__":
+    main()

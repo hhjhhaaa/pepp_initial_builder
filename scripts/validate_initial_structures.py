@@ -1,8 +1,13 @@
 from pathlib import Path
-import argparse, sys
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'src'))
-from pepp_initial_builder.core import load_config
-from pepp_initial_builder.core import validate_systems
-p=argparse.ArgumentParser(); p.add_argument('--config',default='configs/initial_builder.yaml'); p.add_argument('--tiny',action='store_true'); p.add_argument('--pilot',action='store_true'); a=p.parse_args(); c=load_config(ROOT/a.config); print(validate_systems(c,a.tiny,a.pilot))
+import sys
 
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from pepp_initial_builder.polymer.cli import validate_main
+
+
+if __name__ == "__main__":
+    if "--config" not in sys.argv:
+        sys.argv.extend(["--config", "configs/initial_builder.yaml"])
+    validate_main()

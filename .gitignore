@@ -32,6 +32,13 @@ prod.lammpstrj
 
 # Generated large structure folders
 data/systems/*/
+data/polymer/systems/*/
+data/pore/porems_models/*/
+data/pore/silica_patches/*/
+data/mlff_seed/*/
+data/cp2k_aimd/jobs/*/
+data/cp2k_aimd/parsed/*/
+data/aimd_dataset/*.extxyz
 data/aimd_exports/*/
 data/aimd_local_structures/*/
 data/full_pore_seed_structures/*/

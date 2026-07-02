@@ -1,5 +1,19 @@
-from _pore_cli import parser, load
-from pepp_initial_builder.pore_workflow import validate_aimd_local_structures
+from pathlib import Path
+import sys
 
-args = parser().parse_args()
-print(validate_aimd_local_structures(load(args)))
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from pepp_initial_builder.cp2k_aimd.validation import validate_aimd_local_structures
+from pepp_initial_builder.pore_workflow import load_pore_config
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default="configs/aimd_pore_builder.yaml")
+    parser.add_argument("--tiny", action="store_true")
+    parser.add_argument("--pilot", action="store_true")
+    args = parser.parse_args()
+    print(validate_aimd_local_structures(load_pore_config(ROOT / args.config)))

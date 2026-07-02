@@ -1,5 +1,13 @@
-from _pore_cli import parser, load, mode
-from pepp_initial_builder.pore_workflow import build_full_pore_seed_structures
+from pathlib import Path
+import sys
 
-args = parser().parse_args()
-print(build_full_pore_seed_structures(load(args), mode(args)))
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from pepp_initial_builder.mlff_seed.cli import pack_polymer_into_pore_main
+
+
+if __name__ == "__main__":
+    if "--config" not in sys.argv:
+        sys.argv.extend(["--config", "configs/aimd_pore_builder.yaml"])
+    pack_polymer_into_pore_main()

@@ -73,7 +73,8 @@ def _find_files(root_path: Path) -> List[str]:
 
 
 def _posix(path: Path | str) -> str:
-    return str(path).replace("\\", "/")
+    text = str(path).replace("\\", "/")
+    return text.removeprefix("//wsl.localhost/Ubuntu-22.04")
 
 
 def discover_lmp_proj_modules(config: Dict[str, Any]) -> Dict[str, Any]:
@@ -153,4 +154,4 @@ def discover_lmp_proj_modules(config: Dict[str, Any]) -> Dict[str, Any]:
         *[f"  - {item['file']}: {item['reason']}" for item in files_not_reused_and_reason],
     ]
     txt_path.write_text("\n".join(txt_lines) + "\n", encoding="utf-8")
-    return {"txt": str(txt_path), "json": str(json_path), "file_index": str(logs / "lmp_proj_file_index.txt"), **report}
+    return {"txt": _posix(txt_path), "json": _posix(json_path), "file_index": _posix(logs / "lmp_proj_file_index.txt"), **report}

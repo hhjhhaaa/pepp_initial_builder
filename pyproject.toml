@@ -4,6 +4,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pepp-initial-builder"
 version = "0.1.0"
+description = "PE/PP-silica data generation workflows for polymer, pore, MLFF seed, and CP2K/AIMD datasets"
 requires-python = ">=3.10"
 dependencies = ["numpy", "pandas", "pyyaml", "ase"]
 [tool.setuptools.packages.find]

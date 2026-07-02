@@ -1,103 +1,90 @@
 # PE/PP-Silica Data Generation Module
 
-`pepp_initial_builder` is the PE/PP-silica data-generation module. It creates all-atom C/H PE/PP initial structures, PoreMS silica pores, silica patches, AIMD seed structures, CP2K-ready structures and inputs, HPC CP2K job scripts, parsed CP2K labels, AIMD train/val/test extxyz datasets, and dataset manifests.
+`pepp_initial_builder` is the PE/PP-silica data-generation module. It prepares polymer structures, PoreMS silica pores and patches, full-pore MLFF starting structures, CP2K/AIMD labeling inputs, parsed CP2K labels, AIMD train/val/test datasets, manifests, and validation reports.
 
-It does not train MLFF models, fine-tune MACE or SevenNet, run formal MLFF production, train Graph-SPIB, or do descriptor distillation. Any LAMMPS/MD here is cleanup-only and is not training data.
+It does not train MLFF models, run formal MLFF production trajectories, train Graph-SPIB, or do descriptor distillation. LAMMPS relax here is used only to prepare full-pore starting structures for later MLFF production; CP2K/AIMD is used to produce DFT-level labels for MLFF training.
 
-The project boundary has three top-level modules:
+The project boundary has three top-level repositories:
 
 ```text
-/home/jinhao/mlff/pepp_initial_builder  = data generation module
-/home/jinhao/mlff/pepp_mlff_train       = MLFF training module
+/home/jinhao/mlff/pepp_initial_builder  = data generation
+/home/jinhao/mlff/pepp_mlff_train       = MLFF fine-tuning and validation
 /home/jinhao/mlff/pepp_graph_spib       = Graph-SPIB model training and descriptor mining
 ```
 
-Workflow:
+Internal modules:
 
 ```text
-pepp_initial_builder
--> pepp_mlff_train
--> pepp_graph_spib
+src/pepp_initial_builder/polymer/    PE/PP initial structures
+src/pepp_initial_builder/pore/       PoreMS full pores and silica patches
+src/pepp_initial_builder/mlff_seed/  full pore + PE/PP packing + LAMMPS relax starting structures
+src/pepp_initial_builder/cp2k_aimd/  CP2K ENERGY_FORCE / short NVT AIMD labeling datasets
+src/pepp_initial_builder/export/     data-generation manifests and summaries
+src/pepp_initial_builder/reuse/      /home/jinhao/lmp-proj reuse discovery reports
 ```
 
-EMC is discovered and attempted first, but v0 only accepts EMC output if it can be verified as explicit all-atom C/H PE/PP topology with usable segment-center mapping. Otherwise the module records a structured EMC failure and uses Python all-atom topology plus Packmol coordinates.
+Install:
 
-Packmol output is coordinates only. Bonds, angles, atom metadata, chain metadata, and segment metadata come from the Python all-atom builder or verified EMC output. The module never infers polymer bonds from Packmol PDB files using distance guessing, RDKit, OpenBabel, or MDAnalysis.
+```bash
+pip install -e .
+```
 
-`system_id` does not contain rho because this module only creates base initial/data-generation structures. Later `pepp_mlff_train` is responsible for MLFF pretrain loading, fine-tuning, validation, and short stability checks; formal MLFF production trajectories are outside this module.
-
-Run from `/home/jinhao/mlff/pepp_initial_builder`:
+Main workflow:
 
 ```bash
 python scripts/check_env.py
-python scripts/discover_local_tools.py
-python scripts/generate_base_matrix.py --config configs/initial_builder.yaml --tiny
-python scripts/build_initial_structures.py --config configs/initial_builder.yaml --tiny --max-systems 3
-python scripts/write_lammps_cleanup_inputs.py --config configs/initial_builder.yaml --tiny --max-systems 3
-python scripts/validate_initial_structures.py --config configs/initial_builder.yaml --tiny
-python scripts/export_mlff_start_manifest.py --config configs/initial_builder.yaml
+
+python scripts/polymer/generate_matrix.py --config configs/polymer.yaml --tiny
+python scripts/polymer/build_structures.py --config configs/polymer.yaml --tiny --max-systems 3
+python scripts/polymer/validate.py --config configs/polymer.yaml --tiny
+python scripts/polymer/export_manifest.py --config configs/polymer.yaml
+
+python scripts/pore/discover_porems.py --config configs/pore.yaml
+python scripts/pore/build_pore_models.py --config configs/pore.yaml --tiny
+python scripts/pore/crop_patches.py --config configs/pore.yaml --tiny
+python scripts/pore/validate.py --config configs/pore.yaml --tiny
+python scripts/pore/export_manifest.py --config configs/pore.yaml
+
+python scripts/mlff_seed/build_packmol_inputs.py --config configs/mlff_seed.yaml --tiny
+python scripts/mlff_seed/pack_polymer_into_pore.py --config configs/mlff_seed.yaml --tiny
+python scripts/mlff_seed/write_lammps_relax.py --config configs/mlff_seed.yaml --tiny
+python scripts/mlff_seed/validate.py --config configs/mlff_seed.yaml --tiny
+python scripts/mlff_seed/export_manifest.py --config configs/mlff_seed.yaml
+
+python scripts/cp2k_aimd/discover_lmp_proj_reuse.py --config configs/cp2k_aimd.yaml
+python scripts/cp2k_aimd/build_seed_structures.py --config configs/cp2k_aimd.yaml --tiny
+python scripts/cp2k_aimd/write_cp2k_inputs.py --config configs/cp2k_aimd.yaml --tiny
+python scripts/cp2k_aimd/make_hpc_jobs.py --config configs/cp2k_aimd.yaml --tiny
+python scripts/cp2k_aimd/parse_cp2k_outputs.py --config configs/cp2k_aimd.yaml
+python scripts/cp2k_aimd/build_dataset.py --config configs/cp2k_aimd.yaml
+python scripts/cp2k_aimd/validate_dataset.py --config configs/cp2k_aimd.yaml
+python scripts/cp2k_aimd/export_dataset_manifest.py --config configs/cp2k_aimd.yaml
+
+python scripts/export/export_all_manifests.py
+python scripts/export/summarize_outputs.py
 pytest -q
 ```
 
-Forbidden production trajectory names: `prod.lammpstrj`, `production.lammpstrj`. Cleanup diagnostic dumps may only use `cleanup_check.lammpstrj` and are not exported as MLFF training trajectories.
+Old top-level scripts are kept as compatibility wrappers and still accept the original configs.
 
-## PoreMS / AIMD Local Structure Workflow
-
-The module also contains a workflow for silica pore structure preparation:
+Important outputs:
 
 ```text
-PoreMS silica pore / wall structures
--> AIMD local C/H/O/Si training structures
--> full-pore MLFF exploration seed structures
-```
-
-This workflow writes structures, metadata, manifests, and validation reports. It does not train MLFF models and does not run MLFF production.
-
-Run the discovery and manifest-producing steps with:
-
-```bash
-python scripts/discover_porems.py --config configs/aimd_pore_builder.yaml
-python scripts/build_porems_pores.py --config configs/aimd_pore_builder.yaml --tiny
-python scripts/crop_silica_patches.py --config configs/aimd_pore_builder.yaml --tiny
-python scripts/build_aimd_local_structures.py --config configs/aimd_pore_builder.yaml --tiny
-python scripts/build_full_pore_seed_structures.py --config configs/aimd_pore_builder.yaml --tiny
-python scripts/write_cp2k_structure_inputs.py --config configs/aimd_pore_builder.yaml
-python scripts/validate_pore_structures.py --config configs/aimd_pore_builder.yaml
-python scripts/validate_aimd_local_structures.py --config configs/aimd_pore_builder.yaml
-python scripts/validate_full_pore_seed_structures.py --config configs/aimd_pore_builder.yaml
-python scripts/export_pore_aimd_manifests.py --config configs/aimd_pore_builder.yaml
-```
-
-If PoreMS is unavailable, `build_porems_pores.py` writes `failed_porems_not_available` and does not fabricate pore models. A user may place manually generated pore models under `data/porems_models/manual_*`; those are marked with `source: manual_user_input`.
-
-## CP2K / AIMD Dataset Workflow
-
-CP2K data production remains inside this data-generation module. It starts from `data/aimd_local_structures/aimd_local_manifest.csv`, writes CP2K ENERGY_FORCE and short AIMD inputs, writes Slurm job scripts, parses real CP2K outputs, and exports the AIMD dataset manifest consumed by `pepp_mlff_train`.
-
-Run the CP2K/AIMD dataset steps with:
-
-```bash
-python scripts/discover_reusable_lmp_proj_modules.py --config configs/cp2k_dataset.yaml
-python scripts/write_cp2k_label_inputs.py --config configs/cp2k_dataset.yaml --tiny
-python scripts/make_hpc_cp2k_jobs.py --config configs/cp2k_dataset.yaml --tiny
-python scripts/parse_cp2k_outputs.py --config configs/cp2k_dataset.yaml
-python scripts/build_aimd_dataset.py --config configs/cp2k_dataset.yaml
-python scripts/validate_aimd_dataset.py --config configs/cp2k_dataset.yaml
-python scripts/export_aimd_dataset_manifest.py --config configs/cp2k_dataset.yaml
-```
-
-The generated CP2K inputs do not hard-code a CP2K data directory. On HPC, load the correct CP2K module and set the CP2K data path according to that installation before submitting jobs.
-
-`parse_cp2k_outputs.py` only accepts existing CP2K output with parseable energy and force labels. If no real CP2K output is present, downstream dataset manifests are marked as skipped/no valid dataset rather than fabricated.
-
-Key outputs:
-
-```text
-data/exports/mlff_start_manifest.csv
-data/aimd_exports/aimd_structure_manifest.csv
-data/aimd_exports/full_pore_exploration_seed_manifest.csv
+data/exports/polymer_initial_manifest.csv
+data/exports/pore_model_manifest.csv
+data/exports/silica_patch_manifest.csv
+data/exports/mlff_seed_manifest.csv
+data/exports/aimd_seed_manifest.csv
+data/exports/cp2k_job_manifest.csv
 data/exports/aimd_dataset_manifest.csv
-data/aimd_dataset/train.extxyz
-data/aimd_dataset/val.extxyz
-data/aimd_dataset/test.extxyz
 ```
+
+CP2K is not assumed to run in local WSL. Slurm scripts contain:
+
+```bash
+module purge
+module load __SET_CP2K_MODULE_ON_HPC__
+CP2K_CMD=${CP2K_CMD:-cp2k.psmp}
+```
+
+If no real CP2K output is present, parsing and dataset building report `not_run_no_cp2k_output`, `insufficient_real_cp2k_frames`, and `usable_for_mlff_training = false`. The repository must not fabricate CP2K outputs, AIMD trajectories, forces, energies, stress, MLFF models, or MLFF production trajectories.

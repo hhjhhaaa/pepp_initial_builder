@@ -691,15 +691,18 @@ def validate_from_manifest(config: Dict[str, Any], manifest_rel: str, id_col: st
 
 
 def validate_pore_structures(config: Dict[str, Any]) -> Path:
-    return validate_from_manifest(config, "data/porems_models/pore_model_manifest.csv", "pore_model_id", "pore_model_extxyz_path", "pore_structure_validation.csv", PORE_ELEMENTS, True)
+    manifest = f"{config['paths']['porems_models_dir']}/pore_model_manifest.csv"
+    return validate_from_manifest(config, manifest, "pore_model_id", "pore_model_extxyz_path", "pore_structure_validation.csv", PORE_ELEMENTS, True)
 
 
 def validate_aimd_local_structures(config: Dict[str, Any]) -> Path:
-    return validate_from_manifest(config, "data/aimd_local_structures/aimd_local_manifest.csv", "aimd_structure_id", "extxyz_path", "aimd_local_validation.csv", AIMD_ELEMENTS, True)
+    manifest = f"{config['paths']['aimd_local_structures_dir']}/aimd_local_manifest.csv"
+    return validate_from_manifest(config, manifest, "aimd_structure_id", "extxyz_path", "aimd_local_validation.csv", AIMD_ELEMENTS, True)
 
 
 def validate_full_pore_seed_structures(config: Dict[str, Any]) -> Path:
-    return validate_from_manifest(config, "data/full_pore_seed_structures/full_pore_seed_manifest.csv", "full_pore_seed_id", "extxyz_path", "full_pore_seed_validation.csv", AIMD_ELEMENTS, True)
+    manifest = f"{config['paths']['full_pore_seed_structures_dir']}/full_pore_seed_manifest.csv"
+    return validate_from_manifest(config, manifest, "full_pore_seed_id", "extxyz_path", "full_pore_seed_validation.csv", AIMD_ELEMENTS, True)
 
 
 def export_pore_aimd_manifests(config: Dict[str, Any]) -> Tuple[Path, Path]:
@@ -708,11 +711,11 @@ def export_pore_aimd_manifests(config: Dict[str, Any]) -> Tuple[Path, Path]:
     outdir = root / config["paths"]["aimd_exports_dir"]
     pieces = []
     for rel, kind in [
-        ("data/porems_models/pore_model_manifest.csv", "pore_model"),
-        ("data/silica_patches/silica_patch_manifest.csv", "silica_patch"),
-        ("data/aimd_local_structures/aimd_local_manifest.csv", "aimd_local"),
-        ("data/full_pore_seed_structures/full_pore_seed_manifest.csv", "full_pore_seed"),
-        ("data/aimd_exports/cp2k_structure_input_manifest.csv", "cp2k_structure_input"),
+        (f"{config['paths']['porems_models_dir']}/pore_model_manifest.csv", "pore_model"),
+        (f"{config['paths']['silica_patches_dir']}/silica_patch_manifest.csv", "silica_patch"),
+        (f"{config['paths']['aimd_local_structures_dir']}/aimd_local_manifest.csv", "aimd_local"),
+        (f"{config['paths']['full_pore_seed_structures_dir']}/full_pore_seed_manifest.csv", "full_pore_seed"),
+        (f"{config['paths']['aimd_exports_dir']}/cp2k_structure_input_manifest.csv", "cp2k_structure_input"),
     ]:
         p = root / rel
         if p.exists():

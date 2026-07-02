@@ -1,0 +1,66 @@
+paths:
+  root: /home/jinhao/mlff/pepp_initial_builder
+  bulk_initial_manifest: /home/jinhao/mlff/pepp_initial_builder/data/exports/polymer_initial_manifest.csv
+  porems_models_dir: data/pore/porems_models
+  silica_patches_dir: data/pore/silica_patches
+  aimd_local_structures_dir: data/cp2k_aimd/seed_structures
+  full_pore_seed_structures_dir: data/mlff_seed/structures
+  aimd_exports_dir: data/exports
+  logs_dir: outputs/logs
+  figures_dir: outputs/figures
+tools:
+  porems_search_roots: [/home/jinhao, /home/jinhao/software, /home/jinhao/mlff]
+  porems_path_hint: /home/jinhao/software/PoreMS
+  packmol_path_hint: /home/jinhao/software/packmol/packmol-21.1.1/packmol
+  ase_required: true
+  cp2k_not_required_here: true
+  mlff_not_required_here: true
+chemistry:
+  elements: [C, H, O, Si]
+  include_metals: false
+  include_ru: false
+  include_reactions: false
+  explicit_hydrogen: true
+porems:
+  enabled: true
+  model_type: silica_pore
+  pore_shape: cylindrical
+  surface: hydroxylated_silica
+  require_explicit_surface_H: true
+  require_no_dangling_bonds: true
+  pore_diameter_nm_candidates: [4.0, 6.0]
+  pore_length_nm_candidates: [4.0, 6.0]
+  hydroxylation_modes: [silanol_rich, siloxane_rich, mixed_oh]
+  max_pore_models_tiny: 1
+  max_pore_models_pilot: 3
+  max_pore_models_main: 6
+full_pore_seed_matrix:
+  purpose: mlff_exploration_for_active_learning
+  pore_diameter_nm: [4.0, 6.0]
+  pore_length_nm: [4.0, 6.0]
+  pe_pp_compositions: [[1.00, 0.00], [0.50, 0.50], [0.00, 1.00]]
+  chain_lengths_backbone: [80]
+  polymer_loading_modes: [low_loading, medium_loading]
+  seeds: [1]
+  tiny_max_systems: 3
+  pilot_max_systems: 12
+  main_max_systems: 60
+  max_atoms_tiny: 20000
+  max_atoms_pilot: 80000
+  max_atoms_main: 150000
+packing:
+  use_packmol_for_polymer_placement: true
+  min_heavy_atom_distance_A: 1.8
+  min_hydrogen_distance_A: 0.8
+  nonbonded_overlap_only: true
+  exclude_1_2_pairs: true
+  exclude_1_3_pairs: true
+  optionally_exclude_1_4_pairs: true
+outputs:
+  primary_format: extxyz
+  secondary_formats: [pdb, xyz]
+  write_cp2k_xyz: true
+  write_metadata_yaml: true
+  write_atom_table: true
+  write_segment_table: true
+  require_cell_pbc: true
