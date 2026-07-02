@@ -1,0 +1,26 @@
+Config cleanup audit
+====================
+
+configs/initial_builder.yaml -> configs/polymer.yaml
+  old_top_keys: ['builder', 'conditions_for_later_mlff', 'density', 'emc', 'force_field', 'lammps_cleanup', 'matrix', 'packmol', 'paths', 'pilot', 'tiny', 'tools']
+  new_top_keys: ['builder', 'conditions_for_later_mlff', 'density', 'emc', 'force_field', 'lammps_cleanup', 'matrix', 'packmol', 'paths', 'pilot', 'tiny', 'tools']
+  missing_top_keys_in_new: []
+
+configs/aimd_pore_builder.yaml -> configs/pore.yaml
+  old_top_keys: ['aimd_local_matrix', 'chemistry', 'full_pore_seed', 'full_pore_seed_matrix', 'mlff_assumptions', 'outputs', 'packing', 'paths', 'polymer_fragments', 'porems', 'silica_patch', 'tools']
+  new_top_keys: ['chemistry', 'mlff_assumptions', 'paths', 'porems', 'silica_patch', 'tools']
+  missing_top_keys_in_new: ['aimd_local_matrix', 'full_pore_seed', 'full_pore_seed_matrix', 'outputs', 'packing', 'polymer_fragments']
+
+configs/aimd_pore_builder.yaml -> configs/mlff_seed.yaml
+  old_top_keys: ['aimd_local_matrix', 'chemistry', 'full_pore_seed', 'full_pore_seed_matrix', 'mlff_assumptions', 'outputs', 'packing', 'paths', 'polymer_fragments', 'porems', 'silica_patch', 'tools']
+  new_top_keys: ['chemistry', 'full_pore_seed', 'full_pore_seed_matrix', 'outputs', 'packing', 'paths', 'porems', 'tools']
+  missing_top_keys_in_new: ['aimd_local_matrix', 'mlff_assumptions', 'polymer_fragments', 'silica_patch']
+
+configs/cp2k_dataset.yaml -> configs/cp2k_aimd.yaml
+  old_top_keys: ['cp2k', 'dataset', 'dataset_scope', 'hpc', 'label_modes', 'paths', 'reuse_lmp_proj', 'units']
+  new_top_keys: ['aimd_local_matrix', 'cp2k', 'dataset', 'dataset_scope', 'hpc', 'label_modes', 'mlff_assumptions', 'paths', 'polymer_fragments', 'reuse_lmp_proj', 'silica_patch', 'tools', 'units']
+  missing_top_keys_in_new: []
+
+Decision:
+  Required fields used by current code are covered by the four retained configs.
+  Legacy configs will be deleted after imports and tests are updated.

@@ -1,0 +1,100 @@
+old_path,new_path,status,notes
+src/pepp_initial_builder/core.py,src/pepp_initial_builder/common/constants.py,moved,constants
+src/pepp_initial_builder/core.py,src/pepp_initial_builder/common/tables.py,moved,dataclasses
+src/pepp_initial_builder/core.py,src/pepp_initial_builder/common/config.py,moved,yaml loader
+src/pepp_initial_builder/core.py,src/pepp_initial_builder/common/paths.py,moved,polymer path helpers
+src/pepp_initial_builder/core.py,src/pepp_initial_builder/common/io.py,moved,xyz/pdb/lammps writers
+src/pepp_initial_builder/core.py,src/pepp_initial_builder/common/tools.py,moved,local tool discovery
+src/pepp_initial_builder/core.py,src/pepp_initial_builder/polymer/matrix.py,moved,polymer matrix
+src/pepp_initial_builder/core.py,src/pepp_initial_builder/polymer/chain_builder.py,moved,chain construction and system build
+src/pepp_initial_builder/core.py,src/pepp_initial_builder/polymer/packmol.py,moved,packmol input and coordinates
+src/pepp_initial_builder/core.py,src/pepp_initial_builder/polymer/lammps_data.py,moved,LAMMPS data/tables
+src/pepp_initial_builder/core.py,src/pepp_initial_builder/polymer/lammps_cleanup.py,moved,LAMMPS cleanup
+src/pepp_initial_builder/core.py,src/pepp_initial_builder/polymer/validation.py,moved,polymer validation
+src/pepp_initial_builder/core.py,src/pepp_initial_builder/polymer/manifest.py,moved,polymer manifest
+src/pepp_initial_builder/pore_workflow.py,src/pepp_initial_builder/pore/config.py,moved,pore config
+src/pepp_initial_builder/pore_workflow.py,src/pepp_initial_builder/pore/porems_discovery.py,moved,PoreMS discovery
+src/pepp_initial_builder/pore_workflow.py,src/pepp_initial_builder/pore/porems_builder.py,moved,PoreMS/manual pore build
+src/pepp_initial_builder/pore_workflow.py,src/pepp_initial_builder/pore/surface_classifier.py,moved,patch geometry/classification helpers
+src/pepp_initial_builder/pore_workflow.py,src/pepp_initial_builder/pore/patch_crop.py,moved,silica patch crop
+src/pepp_initial_builder/pore_workflow.py,src/pepp_initial_builder/cp2k_aimd/seed_patch_builder.py,moved,AIMD local seed structures
+src/pepp_initial_builder/pore_workflow.py,src/pepp_initial_builder/mlff_seed/full_pore_seed.py,moved,full pore seed packing
+src/pepp_initial_builder/pore_workflow.py,src/pepp_initial_builder/cp2k_aimd/structure_writer.py,moved,CP2K structure xyz export
+src/pepp_initial_builder/pore_workflow.py,src/pepp_initial_builder/pore/validation.py,moved,pore/AIMD validation
+src/pepp_initial_builder/pore_workflow.py,src/pepp_initial_builder/pore/manifest.py,moved,pore/AIMD manifest
+src/pepp_initial_builder/pore_workflow.py,src/pepp_initial_builder/common/safety.py,moved,no fake output safety check
+src/pepp_initial_builder/cp2k_workflow.py,src/pepp_initial_builder/cp2k_aimd/config.py,moved,CP2K config/path/csv helpers
+src/pepp_initial_builder/cp2k_workflow.py,src/pepp_initial_builder/cp2k_aimd/input_writer.py,moved,CP2K input writer
+src/pepp_initial_builder/cp2k_workflow.py,src/pepp_initial_builder/cp2k_aimd/hpc_jobs.py,moved,Slurm scripts
+src/pepp_initial_builder/cp2k_workflow.py,src/pepp_initial_builder/cp2k_aimd/extxyz_writer.py,moved,parsed extxyz writer
+src/pepp_initial_builder/cp2k_workflow.py,src/pepp_initial_builder/cp2k_aimd/parser.py,moved,CP2K parser
+src/pepp_initial_builder/cp2k_workflow.py,src/pepp_initial_builder/cp2k_aimd/dataset_builder.py,moved,AIMD dataset build
+src/pepp_initial_builder/cp2k_workflow.py,src/pepp_initial_builder/cp2k_aimd/validation.py,moved,AIMD dataset validation
+src/pepp_initial_builder/cp2k_workflow.py,src/pepp_initial_builder/cp2k_aimd/manifest.py,moved,AIMD dataset manifest
+src/pepp_initial_builder/lmp_proj_adapter.py,src/pepp_initial_builder/reuse/lmp_proj_discovery.py,moved,lmp-proj discovery report
+scripts/_cp2k_cli.py,,deleted,legacy root script
+scripts/_pore_cli.py,,deleted,legacy root script
+scripts/build_aimd_dataset.py,,deleted,legacy root script
+scripts/build_aimd_local_structures.py,,deleted,legacy root script
+scripts/build_full_pore_seed_structures.py,,deleted,legacy root script
+scripts/build_initial_structures.py,,deleted,legacy root script
+scripts/build_porems_pores.py,,deleted,legacy root script
+scripts/crop_silica_patches.py,,deleted,legacy root script
+scripts/discover_local_tools.py,,deleted,legacy root script
+scripts/discover_porems.py,,deleted,legacy root script
+scripts/discover_reusable_lmp_proj_modules.py,,deleted,legacy root script
+scripts/export_aimd_dataset_manifest.py,,deleted,legacy root script
+scripts/export_mlff_start_manifest.py,,deleted,legacy root script
+scripts/export_pore_aimd_manifests.py,,deleted,legacy root script
+scripts/generate_base_matrix.py,,deleted,legacy root script
+scripts/make_hpc_cp2k_jobs.py,,deleted,legacy root script
+scripts/parse_cp2k_outputs.py,,deleted,legacy root script
+scripts/run_emc_builder.py,,deleted,legacy root script
+scripts/run_lammps_cleanup.py,,deleted,legacy root script
+scripts/run_packmol_builder.py,,deleted,legacy root script
+scripts/validate_aimd_dataset.py,,deleted,legacy root script
+scripts/validate_aimd_local_structures.py,,deleted,legacy root script
+scripts/validate_full_pore_seed_structures.py,,deleted,legacy root script
+scripts/validate_initial_structures.py,,deleted,legacy root script
+scripts/validate_pore_structures.py,,deleted,legacy root script
+scripts/write_cp2k_label_inputs.py,,deleted,legacy root script
+scripts/write_cp2k_structure_inputs.py,,deleted,legacy root script
+scripts/write_lammps_cleanup_inputs.py,,deleted,legacy root script
+configs/initial_builder.yaml,,deleted,legacy config
+configs/aimd_pore_builder.yaml,,deleted,legacy config
+configs/cp2k_dataset.yaml,,deleted,legacy config
+src/pepp_initial_builder/aimd_dataset_builder.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/aimd_dataset_validation.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/aimd_local_builder.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/aimd_metadata.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/all_atom_builder.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/cleanup_runner.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/core.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/cp2k_input_writer.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/cp2k_output_parser.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/cp2k_structure_writer.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/cp2k_workflow.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/emc_adapter.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/env.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/full_pore_metadata.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/full_pore_seed_builder.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/hpc_cp2k_jobs.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/hydrogen_builder.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/lammps_cleanup_inputs.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/lammps_data.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/lmp_proj_adapter.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/manifest.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/matrix.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/metadata.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/packing.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/packmol_adapter.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/pore_polymer_packing.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/pore_validation.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/pore_workflow.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/porems_adapter.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/silica_patch.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/silica_pore.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/tools.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/topology.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/validation.py,,deleted,top-level facade or monolith
+src/pepp_initial_builder/writers.py,,deleted,top-level facade or monolith

@@ -12,5 +12,3 @@ def load_yaml(path: str | Path) -> Dict[str, Any]:
 
 
 load_config = load_yaml
-
-__all__ = ["load_yaml", "load_config"]

@@ -65,7 +65,7 @@ python scripts/export/summarize_outputs.py
 pytest -q
 ```
 
-Old top-level scripts are kept as compatibility wrappers and still accept the original configs.
+No legacy compatibility layers are kept. No synthetic label data are generated. No fake CP2K/AIMD/MLFF outputs are allowed.
 
 Important outputs:
 

@@ -1,1 +1,1 @@
-"""Full-pore PE/PP structures used as MLFF production starting seeds."""
+"""Full-pore PE/PP structures used as MLFF starting seeds."""

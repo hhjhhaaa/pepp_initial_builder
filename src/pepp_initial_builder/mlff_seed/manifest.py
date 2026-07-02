@@ -1,3 +1,3 @@
-from pepp_initial_builder.export.all_manifests import export_all_manifests
+from __future__ import annotations
 
-__all__ = ["export_all_manifests"]
+from pepp_initial_builder.export.all_manifests import export_all_manifests
