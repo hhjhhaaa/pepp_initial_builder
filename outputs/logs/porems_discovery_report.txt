@@ -1,0 +1,40 @@
+{
+  "available": true,
+  "source": "installed_porems",
+  "executable": null,
+  "python_package_found": false,
+  "python_package_error": "No module named 'porems'",
+  "version": "0.3.0",
+  "python_executable": "/home/jinhao/miniconda3/envs/meso-dev/bin/python",
+  "discovered_python_packages": [
+    {
+      "package_path": "/home/jinhao/miniconda3/envs/meso-dev/lib/python3.10/site-packages/porems",
+      "site_packages": "/home/jinhao/miniconda3/envs/meso-dev/lib/python3.10/site-packages",
+      "python_executable": "/home/jinhao/miniconda3/envs/meso-dev/bin/python",
+      "version": "0.3.0"
+    }
+  ],
+  "candidates": [
+    "/home/jinhao/lmp-proj/Mesoporous_structure_generation/generator/support_gen/__pycache__/porems_host.cpython-310.pyc",
+    "/home/jinhao/lmp-proj/Mesoporous_structure_generation/generator/support_gen/porems_host.py",
+    "/home/jinhao/lmp-proj/cg-transfer/structure/generator/__pycache__/porems_host.cpython-310.pyc",
+    "/home/jinhao/lmp-proj/cg-transfer/structure/generator/__pycache__/porems_host.cpython-313.pyc",
+    "/home/jinhao/lmp-proj/cg-transfer/structure/generator/porems_host.py",
+    "/home/jinhao/miniconda3/envs/meso-dev/lib/python3.10/site-packages/porems",
+    "/home/jinhao/miniconda3/envs/meso-dev/lib/python3.10/site-packages/porems-0.3.0.dist-info",
+    "/home/jinhao/mlff/pepp_initial_builder/data/porems_models",
+    "/home/jinhao/mlff/pepp_initial_builder/outputs/logs/porems_discovery.json",
+    "/home/jinhao/mlff/pepp_initial_builder/outputs/logs/porems_discovery_report.txt",
+    "/home/jinhao/mlff/pepp_initial_builder/scripts/__pycache__/build_porems_pores.cpython-311.pyc",
+    "/home/jinhao/mlff/pepp_initial_builder/scripts/__pycache__/discover_porems.cpython-311.pyc",
+    "/home/jinhao/mlff/pepp_initial_builder/scripts/build_porems_pores.py",
+    "/home/jinhao/mlff/pepp_initial_builder/scripts/discover_porems.py",
+    "/home/jinhao/mlff/pepp_initial_builder/src/pepp_initial_builder/porems_adapter.py",
+    "/home/jinhao/mlff/pepp_initial_builder/tests/__pycache__/test_porems_discovery.cpython-311-pytest-9.1.1.pyc",
+    "/home/jinhao/mlff/pepp_initial_builder/tests/test_porems_discovery.py"
+  ],
+  "examples": [],
+  "templates": [],
+  "manual_user_input_allowed": true,
+  "manual_user_input_note": "Place extxyz/pdb pore models under data/porems_models/manual_* and rerun builders."
+}

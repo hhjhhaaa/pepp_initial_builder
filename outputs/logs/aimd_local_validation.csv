@@ -1,0 +1,13 @@
+aimd_structure_id,status,exists,valid,n_atoms,elements,has_explicit_h,box_lx_A,box_ly_A,box_lz_A,pbc
+aimd_0001_silica_patch_only_seed1,available,True,True,180,H;O;Si,True,60.72,61.39,37.199999999999996,True
+aimd_0002_silica_patch_only_seed2,available,True,True,180,H;O;Si,True,60.72,61.39,37.199999999999996,True
+aimd_0003_silica_patch_only_seed3,available,True,True,180,H;O;Si,True,60.72,61.39,37.199999999999996,True
+aimd_0004_pe_near_silanol_wall_seed1,available,True,True,206,C;H;O;Si,True,60.72,61.39,37.199999999999996,True
+aimd_0005_pe_near_silanol_wall_seed2,available,True,True,206,C;H;O;Si,True,60.72,61.39,37.199999999999996,True
+aimd_0006_pe_near_silanol_wall_seed3,available,True,True,206,C;H;O;Si,True,60.72,61.39,37.199999999999996,True
+aimd_0007_pe_near_siloxane_wall_seed1,available,True,True,206,C;H;O;Si,True,60.72,61.39,37.199999999999996,True
+aimd_0008_pe_near_siloxane_wall_seed2,available,True,True,206,C;H;O;Si,True,60.72,61.39,37.199999999999996,True
+aimd_0009_pe_near_siloxane_wall_seed3,available,True,True,206,C;H;O;Si,True,60.72,61.39,37.199999999999996,True
+aimd_0010_pp_near_silanol_wall_seed1,available,True,True,218,C;H;O;Si,True,60.72,61.39,37.199999999999996,True
+aimd_0011_pp_near_silanol_wall_seed2,available,True,True,218,C;H;O;Si,True,60.72,61.39,37.199999999999996,True
+aimd_0012_pp_near_silanol_wall_seed3,available,True,True,218,C;H;O;Si,True,60.72,61.39,37.199999999999996,True

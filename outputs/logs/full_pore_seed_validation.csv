@@ -1,0 +1,4 @@
+full_pore_seed_id,status,exists,valid,n_atoms,elements,has_explicit_h,box_lx_A,box_ly_A,box_lz_A,pbc
+full_pore_seed_0001_PE100_PP00_seed1,available,True,True,7091,C;H;O;Si,True,60.72,61.39,37.199999999999996,True
+full_pore_seed_0002_PE50_PP50_seed1,available,True,True,7453,C;H;O;Si,True,60.72,61.39,37.199999999999996,True
+full_pore_seed_0003_PE00_PP100_seed1,available,True,True,7211,C;H;O;Si,True,60.72,61.39,37.199999999999996,True

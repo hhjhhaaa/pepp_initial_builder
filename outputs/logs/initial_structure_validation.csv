@@ -1,0 +1,4 @@
+system_id,usable_for_mlff_start,missing_files,atom_count,bond_count,segment_center_count,backbone_carbon_count,box_positive,bad_carbon_valence_count,bad_hydrogen_count,pp_side_methyl_count,pp_side_methyl_expected,nonbonded_heavy_overlap_count,min_nonbonded_heavy_distance_A,forbidden_production_trajectory_files
+pepp_PE100_PP00_N40_seed1,True,,2440,2420,800,800,True,0,0,0,0,0,2.06155984632996,
+pepp_PE50_PP50_N40_seed1,True,,3040,3020,800,800,True,0,0,200,200,1,1.2340036466720825,
+pepp_PE00_PP100_N40_seed1,True,,3640,3620,800,800,True,0,0,400,400,6,0.8921625412445868,

@@ -1,0 +1,37 @@
+{
+  "python_executable": "/home/jinhao/miniforge3/envs/pepp-graph-spib/bin/python",
+  "python_version": "3.11.15",
+  "conda_environment": "",
+  "python_modules": {
+    "numpy": "FOUND",
+    "pandas": "FOUND",
+    "yaml": "FOUND",
+    "ase": "FOUND",
+    "MDAnalysis": "FOUND",
+    "rdkit": "FOUND",
+    "openbabel": "FOUND"
+  },
+  "emc": {
+    "root": "/home/jinhao/software/EMC",
+    "executable": "/home/jinhao/software/EMC/bin/emc_linux_x86_64",
+    "emc_pl": "/home/jinhao/software/EMC/scripts/emc.pl",
+    "emc_setup": "/home/jinhao/software/EMC/scripts/emc_setup.pl",
+    "scripts_dir": "/home/jinhao/software/EMC/scripts",
+    "examples_dir": "/home/jinhao/software/EMC/examples",
+    "field_dir": "/home/jinhao/software/EMC/field",
+    "preferred_fields_found": [
+      "OPLS-AA",
+      "PCFF",
+      "TraPPE"
+    ]
+  },
+  "packmol": {
+    "executable": "/home/jinhao/software/packmol/packmol-21.1.1/packmol"
+  },
+  "lammps": {
+    "executable": "/home/jinhao/software/lammps/build-cmake/lmp"
+  },
+  "obabel": {
+    "executable": null
+  }
+}

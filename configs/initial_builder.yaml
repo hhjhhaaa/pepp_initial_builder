@@ -1,0 +1,77 @@
+paths:
+  root: /home/jinhao/mlff/pepp_initial_builder
+  systems_dir: data/systems
+  matrix_dir: data/matrix
+  exports_dir: data/exports
+  logs_dir: outputs/logs
+matrix:
+  compositions: [[1.00, 0.00], [0.75, 0.25], [0.50, 0.50], [0.25, 0.75], [0.00, 1.00]]
+  chain_lengths_backbone: [80, 160]
+  seeds: [1, 2, 3]
+  total_backbone_carbons: 5120
+  planned_downstream_density_scales: [0.95, 1.00, 1.05]
+pilot:
+  compositions: [[1.00, 0.00], [0.50, 0.50], [0.00, 1.00]]
+  chain_lengths_backbone: [80]
+  seeds: [1]
+  total_backbone_carbons: 1280
+  planned_downstream_density_scales: [0.95, 1.00, 1.05]
+tiny:
+  compositions: [[1.00, 0.00], [0.50, 0.50], [0.00, 1.00]]
+  chain_lengths_backbone: [40]
+  seeds: [1]
+  total_backbone_carbons: 800
+  planned_downstream_density_scales: [0.95, 1.00, 1.05]
+density:
+  definition: initial_packing_density_only
+  initial_packing_density_g_cm3: 0.50
+  not_equilibrium_density: true
+conditions_for_later_mlff:
+  target_temperature_K: 523.0
+  target_pressure_atm: 1.0
+tools:
+  preferred_builder: emc
+  fallback_builder: packmol
+  allow_python_chain_builder: true
+  allow_lammps_cleanup: true
+  known_emc_root: /home/jinhao/software/EMC
+  known_packmol_executable: /home/jinhao/software/packmol/packmol-21.1.1/packmol
+  known_lammps_executable: /home/jinhao/software/lammps/build-cmake/lmp
+builder:
+  representation: all_atom_C_H
+  chain_conformation: random_walk_carbon_skeleton
+  add_hydrogen_by_valence: true
+  pp_tacticity: atactic_like_v0
+  min_heavy_atom_distance_A: 1.8
+  min_hydrogen_distance_A: 0.8
+  max_packing_attempts: 20000
+emc:
+  enabled: true
+  require_all_atom_output: true
+  attempt_timeout_seconds: 300
+  preferred_force_fields: [OPLS-AA, PCFF, TraPPE]
+  reject_united_atom_output: true
+  save_discovery_report: true
+packmol:
+  enabled: true
+  tolerance_A: 2.0
+  maxit: 2000
+  filetype: pdb
+  timeout_seconds: 300
+lammps_cleanup:
+  enabled: true
+  purpose: overlap_cleanup_only_not_training_data
+  units: real
+  atom_style: full
+  pair_style_soft: soft
+  pair_style_final: lj/cut
+  pair_cutoff_A: 10.0
+  timestep_fs: 0.25
+  minimize_maxiter: 2000
+  soft_push_steps: 5000
+  short_nvt_steps: 5000
+  thermo_stride: 100
+  dump_stride: 1000
+force_field:
+  name: generic_all_atom_cleanup_v0
+  purpose: cleanup_only_not_scientific_force_field

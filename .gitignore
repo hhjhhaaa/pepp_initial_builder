@@ -1,0 +1,55 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+
+# Large trajectories / binary data
+*.traj
+*.lammpstrj
+*.dcd
+*.xtc
+*.trr
+*.h5
+*.hdf5
+*.npy
+*.npz
+
+# CP2K heavy outputs
+cp2k.out
+*.wfn
+*.restart
+*RESTART*
+aimd.traj
+
+# MLFF models / production outputs
+*.model
+*.pt
+*.pth
+*.ckpt
+production.extxyz
+production.lammpstrj
+prod.lammpstrj
+
+# Generated large structure folders
+data/systems/*/
+data/aimd_exports/*/
+data/aimd_local_structures/*/
+data/full_pore_seed_structures/*/
+data/aimd_seed_dataset/*/
+data/cp2k_seed_jobs/*/
+data/cp2k_parsed/*/
+data/mlff_models/*/
+data/porems_models/*/
+data/silica_patches/*/
+outputs/logs/*
+
+# Keep small manifests and reports
+!data/**/manifest*.csv
+!data/**/manifest*.json
+!data/exports/*.csv
+!data/exports/*.json
+!data/aimd_exports/*.csv
+!data/aimd_exports/*.json
+!outputs/logs/*report*.txt
+!outputs/logs/*report*.json
+!outputs/logs/*validation*.csv

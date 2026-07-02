@@ -1,0 +1,2 @@
+pore_model_id,status,exists,valid,n_atoms,elements,has_explicit_h,box_lx_A,box_ly_A,box_lz_A,pbc
+porems_D4p0nm_L4p0nm_silanol_rich,available,True,True,6849,H;O;Si,True,60.72,61.39,37.199999999999996,True
