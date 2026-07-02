@@ -305,13 +305,17 @@ def _relax_metrics(
         polymer_ids = [idx for idx in range(n_silica, len(elems)) if elems[idx] in {"C", "H"}]
         polymer_heavy = [idx for idx in polymer_ids if elems[idx] == "C"]
         center = (box[0] / 2.0, box[1] / 2.0)
-        radius = max(np.min(np.linalg.norm(coords[:n_silica, :2] - np.array(center), axis=1)) - 1.0, 0.5)
-        zmin = float(config.get("full_pore_seed", {}).get("end_buffer_A", 3.0))
-        zmax = float(box[2]) - zmin
+        matrix = config.get("full_pore_seed_matrix", {})
+        diameters = matrix.get("pore_diameter_nm", [4.0])
+        nominal_radius = float(diameters[0]) * 10.0 / 2.0 if diameters else 20.0
+        silica_inner_radius = float(np.min(np.linalg.norm(coords[:n_silica, :2] - np.array(center), axis=1)))
+        radius = max(nominal_radius, silica_inner_radius)
         if polymer_ids:
             radial = np.linalg.norm(coords[polymer_ids, :2] - np.array(center), axis=1)
-            z = coords[polymer_ids, 2]
-            inside = (radial < radius) & (z > zmin) & (z < zmax)
+            # The relaxed full-pore LAMMPS run is periodic in z. Wrapped chain atoms
+            # near z=0/lz are still inside the pore, so use radial containment here;
+            # silica overlap/contact gates handle wall penetration separately.
+            inside = radial < radius
             metrics["polymer_inside_pore_fraction"] = float(np.mean(inside))
         distances = _min_distances_to_silica(elems, coords, n_silica, polymer_heavy)
         if distances:
