@@ -56,6 +56,28 @@ full_pore_seed:
   max_initial_overlap_retries: 2000
   min_polymer_inside_pore_fraction: 0.95
   min_polymer_silica_distance_A: 1.6
+lammps_full_pore_relax:
+  enabled: true
+  purpose: full_pore_pre_equilibration_before_cp2k_crop
+  temperature_K: 523.0
+  high_temperature_K: 650.0
+  timestep_fs: 0.5
+  tiny_high_temp_steps: 10000
+  tiny_target_temp_steps: 10000
+  pilot_high_temp_steps: 400000
+  pilot_target_temp_steps: 1600000
+  main_high_temp_steps: 2000000
+  main_target_temp_steps: 8000000
+  minimize_etol: 1.0e-6
+  minimize_ftol: 1.0e-8
+  minimize_maxiter: 5000
+  minimize_maxeval: 20000
+  thermo_every: 500
+  dump_every: 1000
+  timeout_seconds: 1800
+  silica_mobile: false
+  relax_is_training_data: false
+  relax_is_production_md: false
 packing:
   tolerance_A: 2.0
   maxit: 2000

@@ -69,6 +69,39 @@ pytest -q
 
 No legacy layers are kept. No Python random-walk polymer builder or internal Packmol substitute is kept. No synthetic label data are generated. No fake CP2K/AIMD/MLFF outputs are allowed.
 
+Full-pore structure method:
+
+```text
+1. EMC builds PE/PP chains with PCFF typing and LAMMPS topology.
+2. PoreMS provides the hydroxylated cylindrical silica pore.
+3. Packmol places whole EMC chain templates inside the pore cylinder:
+   r < pore_radius - wall_buffer_A
+   end_buffer_A < z < box_lz - end_buffer_A
+4. LAMMPS pre-equilibrates the packed full-pore structure before any CP2K crop:
+   minimization -> high-temperature NVT anneal -> target-temperature NVT.
+5. CP2K/AIMD local crops are cut only from LAMMPS-relaxed full-pore structures
+   or later LAMMPS exploration snapshots.
+```
+
+The polymer is intentionally packed inside the pore before MD. The LAMMPS stage is not used to wait for chains to diffuse from outside the pore into the pore, because that insertion/adsorption process is too slow for the tiny first-run validation and would make the initial dataset irreproducible. LAMMPS is used to remove packing contacts and equilibrate chain conformations, local density, and polymer-silica contacts at fixed pore geometry.
+
+Default full-pore LAMMPS pre-equilibration parameters:
+
+```text
+force field path: EMC PCFF polymer parameters + fixed nonreactive silica host terms
+ensemble: polymer NVT, silica fixed by setforce 0 0 0
+timestep: 0.5 fs
+minimization: fire, etol 1e-6, ftol 1e-8
+anneal stage: 650 K NVT
+target stage: 523 K NVT
+
+tiny:  10,000 + 10,000 steps = 10 ps, smoke test only
+pilot: 400,000 + 1,600,000 steps = 1 ns, first credible pre-equilibrated structures
+main:  2,000,000 + 8,000,000 steps = 5 ns, production starting structures
+```
+
+The tiny setting is deliberately short so the HPC toolchain can be validated quickly. It is not a claim of structural equilibration. For production analysis, density/contact convergence should be checked from the pilot/main LAMMPS trajectories before increasing CP2K crop volume.
+
 Important outputs:
 
 ```text

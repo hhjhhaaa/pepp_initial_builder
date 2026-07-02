@@ -29,7 +29,7 @@ def _stage_from_row(row: Dict[str, str], default: str) -> str:
 
 
 def _snapshot_path(row: Dict[str, str]) -> str:
-    for key in ["source_snapshot_path", "snapshot_path", "mlff_start_extxyz_path", "extxyz_path", "seed_extxyz_path"]:
+    for key in ["source_snapshot_path", "snapshot_path", "relaxed_extxyz_path", "mlff_start_extxyz_path", "extxyz_path", "seed_extxyz_path"]:
         value = row.get(key, "")
         if value:
             return value
@@ -42,8 +42,6 @@ def _normalize_row(row: Dict[str, str], source_manifest: Path, default_stage: st
     path = _snapshot_path(row)
     status = row.get("status", "")
     usable = str(row.get("usable_for_mlff_start", "true")).lower() not in {"false", "0", "no"}
-    recommended = "single_point_force_only" if source_stage == "raw_full_pore_seed" else "energy_force_and_short_aimd"
-    confidence = "bootstrap_only" if source_stage == "raw_full_pore_seed" else "production_candidate"
     return {
         **row,
         "source_stage": source_stage,
@@ -51,8 +49,8 @@ def _normalize_row(row: Dict[str, str], source_manifest: Path, default_stage: st
         "source_snapshot_path": path,
         "source_frame_index": row.get("source_frame_index", row.get("frame_index", "0")),
         "source_manifest": str(source_manifest),
-        "recommended_label_mode": row.get("recommended_label_mode", recommended),
-        "confidence": row.get("confidence", confidence),
+        "recommended_label_mode": row.get("recommended_label_mode", "energy_force_and_short_aimd"),
+        "confidence": row.get("confidence", "production_candidate"),
         "status": status,
         "usable_for_mlff_start": str(usable).lower(),
     }
@@ -61,9 +59,11 @@ def _normalize_row(row: Dict[str, str], source_manifest: Path, default_stage: st
 def read_full_pore_snapshot_sources(config: Dict[str, Any]) -> List[Dict[str, str]]:
     paths = config.get("paths", {})
     allowed_stages = set(config.get("cp2k_crop", {}).get("source_priority", ["lammps_relaxed_full_pore", "lammps_exploration_snapshot"]))
+    allowed_stages.discard("raw_full_pore_seed")
     candidates = [
         p(config, "exports_dir") / "full_pore_snapshot_manifest.csv",
         p(config, "exports_dir") / "mlff_seed_manifest.csv",
+        p(config, "full_pore_seed_structures_dir") / "lammps_relax_manifest.csv",
         p(config, "full_pore_seed_structures_dir") / "full_pore_seed_manifest.csv",
     ]
     if paths.get("full_pore_snapshot_manifest"):
@@ -82,7 +82,9 @@ def read_full_pore_snapshot_sources(config: Dict[str, Any]) -> List[Dict[str, st
             key = (normalized["source_full_pore_id"], path, normalized["source_frame_index"])
             if not path or key in seen:
                 continue
-            if normalized["status"] and not normalized["status"].startswith("available"):
+            status = normalized["status"]
+            status_ok = (not status) or status.startswith("available") or status == "lammps_relaxed_full_pore"
+            if not status_ok:
                 continue
             if normalized["usable_for_mlff_start"] == "false":
                 continue

@@ -17,15 +17,15 @@ def write_relaxed_full_pore_source(cfg: dict, tmp_path: Path) -> Path:
     text = f'{len(atoms)}\nLattice="30 0 0 0 30 0 0 0 30" Properties=species:S:1:pos:R:3 pbc="T T T"\n'
     text += "\n".join(f"{e} {x:.6f} {y:.6f} {z:.6f}" for e, x, y, z in atoms) + "\n"
     source.write_text(text, encoding="utf-8")
-    manifest = tmp_path / "data/mlff_seed/structures/full_pore_seed_manifest.csv"
+    manifest = tmp_path / "data/mlff_seed/structures/lammps_relax_manifest.csv"
     pd.DataFrame(
         [
             {
                 "full_pore_seed_id": "full_pore_seed_0001_PE100_PP00_seed1",
-                "status": "available",
+                "status": "lammps_relaxed_full_pore",
                 "source_stage": "lammps_relaxed_full_pore",
                 "source_full_pore_id": "full_pore_seed_0001_PE100_PP00_seed1",
-                "extxyz_path": str(source),
+                "relaxed_extxyz_path": str(source),
                 "mlff_start_structure_kind": "lammps_relaxed_full_pore",
                 "usable_for_mlff_start": True,
             }
