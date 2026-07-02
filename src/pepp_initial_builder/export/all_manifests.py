@@ -33,10 +33,10 @@ def export_all_manifests(config: Dict[str, Any] | None = None) -> Tuple[Path, Pa
     exports = root / "data" / "exports"
     exports.mkdir(parents=True, exist_ok=True)
     paths = config.get("paths", {}) if config else {}
-    porems_dir = root / paths.get("porems_models_dir", "data/porems_models")
-    patches_dir = root / paths.get("silica_patches_dir", "data/silica_patches")
-    mlff_seed_dir = root / paths.get("full_pore_seed_structures_dir", "data/full_pore_seed_structures")
-    aimd_seed_dir = root / paths.get("aimd_local_structures_dir", "data/aimd_local_structures")
+    porems_dir = root / paths.get("porems_models_dir", "data/pore/porems_models")
+    patches_dir = root / paths.get("silica_patches_dir", "data/pore/silica_patches")
+    mlff_seed_dir = root / paths.get("full_pore_seed_structures_dir", "data/mlff_seed/structures")
+    aimd_seed_dir = root / paths.get("aimd_local_structures_dir", "data/cp2k_aimd/seed_structures")
     jobs_dir = root / paths.get("jobs_dir", "outputs/jobs")
     mapping = [
         (root / "data" / "exports" / "mlff_start_manifest.csv", exports / "polymer_initial_manifest.csv"),

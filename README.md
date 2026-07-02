@@ -23,6 +23,8 @@ src/pepp_initial_builder/export/     data-generation manifests and summaries
 src/pepp_initial_builder/reuse/      /home/jinhao/lmp-proj reuse discovery reports
 ```
 
+`src/` is the Python packaging source layout, not a separate dependency or runtime environment. Runtime dependencies are declared in `pyproject.toml`; `requirements.txt` only installs the package and test runner.
+
 Install:
 
 ```bash
@@ -65,7 +67,7 @@ python scripts/export/summarize_outputs.py
 pytest -q
 ```
 
-No legacy compatibility layers are kept. No synthetic label data are generated. No fake CP2K/AIMD/MLFF outputs are allowed.
+No legacy layers are kept. No synthetic label data are generated. No fake CP2K/AIMD/MLFF outputs are allowed.
 
 Important outputs:
 
@@ -78,6 +80,8 @@ data/exports/aimd_seed_manifest.csv
 data/exports/cp2k_job_manifest.csv
 data/exports/aimd_dataset_manifest.csv
 ```
+
+`data/` is a generated workspace and is ignored by Git. The repository tracks code, configs, scripts, tests, and small audit text only; generated structures, manifests, CP2K jobs, parsed outputs, and AIMD extxyz files stay local or move by rsync.
 
 CP2K is not assumed to run in local WSL. Slurm scripts contain:
 
@@ -97,6 +101,8 @@ Recommended HPC tiny first-run order:
 
 The combined `outputs/jobs/submit_cp2k_seed_tiny.sh` exists for convenience, but the split SP-then-short-AIMD path is the recommended validation route.
 
-For local AIMD patches, tiny validation is capped at `<=100` atoms. Patch cells are rebuilt as orthorhombic local cells with vacuum padding, atoms are translated near the local cell center, and `PERIODIC XYZ` is used for v0 with the padded cell so CP2K outputs stay compatible with periodic MLFF datasets. If mirror interactions become problematic in measured runs, a later version should switch these patches to a slab or cluster strategy.
+CP2K/AIMD seed structures are cropped from full-pore PE/PP-silica seeds or later LAMMPS relax/exploration snapshots. Hand-designed silica patches are kept in the pore workflow for bootstrap geometry checks, but the CP2K seed builder requires full-pore seed/snapshot sources and records source stage, local environment reason, frame provenance, crop boundary treatment, local composition, wall distance, and cell centering metadata.
+
+For tiny CP2K crop validation, local crops are capped at `<=100` atoms. Crop cells are rebuilt as orthorhombic local cells with vacuum padding, atoms are translated near the local cell center, and `PERIODIC XYZ` is used for v0 with the padded cell so CP2K outputs stay compatible with periodic MLFF datasets. If mirror interactions become problematic in measured runs, a later version should switch these crops to a slab or cluster strategy.
 
 If no real CP2K output is present, parsing and dataset building report `not_run_no_cp2k_output`, `insufficient_real_cp2k_frames`, and `usable_for_mlff_training = false`. The repository must not fabricate CP2K outputs, AIMD trajectories, forces, energies, stress, MLFF models, or MLFF production trajectories.

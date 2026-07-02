@@ -1,7 +1,0 @@
-manifest,source,path,status
-polymer_initial_manifest.csv,/home/jinhao/mlff/pepp_initial_builder/data/exports/mlff_start_manifest.csv,/home/jinhao/mlff/pepp_initial_builder/data/exports/polymer_initial_manifest.csv,available
-pore_model_manifest.csv,/home/jinhao/mlff/pepp_initial_builder/data/porems_models/pore_model_manifest.csv,/home/jinhao/mlff/pepp_initial_builder/data/exports/pore_model_manifest.csv,available
-silica_patch_manifest.csv,/home/jinhao/mlff/pepp_initial_builder/data/silica_patches/silica_patch_manifest.csv,/home/jinhao/mlff/pepp_initial_builder/data/exports/silica_patch_manifest.csv,available
-mlff_seed_manifest.csv,/home/jinhao/mlff/pepp_initial_builder/data/full_pore_seed_structures/full_pore_seed_manifest.csv,/home/jinhao/mlff/pepp_initial_builder/data/exports/mlff_seed_manifest.csv,available
-aimd_seed_manifest.csv,/home/jinhao/mlff/pepp_initial_builder/data/aimd_local_structures/aimd_local_manifest.csv,/home/jinhao/mlff/pepp_initial_builder/data/exports/aimd_seed_manifest.csv,available
-cp2k_job_manifest.csv,/home/jinhao/mlff/pepp_initial_builder/outputs/jobs/cp2k_hpc_job_manifest.csv,/home/jinhao/mlff/pepp_initial_builder/data/exports/cp2k_job_manifest.csv,available

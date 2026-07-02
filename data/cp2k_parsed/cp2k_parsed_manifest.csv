@@ -1,5 +1,0 @@
-aimd_structure_id,family,label_mode,status,usable_frame_count,failure_reason,frames_extxyz_path,parse_summary_path
-aimd_0001_silica_patch_only_seed1,silica_patch_only,short_aimd,not_run_no_cp2k_output,0,cp2k.out missing,,/home/jinhao/mlff/pepp_initial_builder/data/cp2k_parsed/aimd_0001_silica_patch_only_seed1/short_aimd/parse_summary.yaml
-aimd_0002_silica_patch_only_seed2,silica_patch_only,short_aimd,not_run_no_cp2k_output,0,cp2k.out missing,,/home/jinhao/mlff/pepp_initial_builder/data/cp2k_parsed/aimd_0002_silica_patch_only_seed2/short_aimd/parse_summary.yaml
-aimd_0003_silica_patch_only_seed3,silica_patch_only,short_aimd,not_run_no_cp2k_output,0,cp2k.out missing,,/home/jinhao/mlff/pepp_initial_builder/data/cp2k_parsed/aimd_0003_silica_patch_only_seed3/short_aimd/parse_summary.yaml
-aimd_0004_pe_near_silanol_wall_seed1,pe_near_silanol_wall,sp_force,not_run_no_cp2k_output,0,cp2k.out missing,,/home/jinhao/mlff/pepp_initial_builder/data/cp2k_parsed/aimd_0004_pe_near_silanol_wall_seed1/sp_force/parse_summary.yaml

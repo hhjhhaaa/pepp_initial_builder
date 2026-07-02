@@ -29,11 +29,11 @@ def _cfg(tmp_path: Path) -> dict:
     return {
         "paths": {
             "root": str(tmp_path),
-            "aimd_structure_manifest": "data/aimd_exports/pore_aimd_master_manifest.csv",
-            "aimd_local_manifest": "data/aimd_local_structures/aimd_local_manifest.csv",
-            "cp2k_structure_input_manifest": "data/aimd_exports/cp2k_structure_input_manifest.csv",
-            "cp2k_jobs_dir": "data/cp2k_seed_jobs",
-            "cp2k_parsed_dir": "data/cp2k_parsed",
+            "aimd_structure_manifest": "data/exports/pore_aimd_master_manifest.csv",
+            "aimd_local_manifest": "data/cp2k_aimd/seed_structures/aimd_local_manifest.csv",
+            "cp2k_structure_input_manifest": "data/exports/cp2k_structure_input_manifest.csv",
+            "cp2k_jobs_dir": "data/cp2k_aimd/jobs",
+            "cp2k_parsed_dir": "data/cp2k_aimd/parsed",
             "aimd_dataset_dir": "data/aimd_dataset",
             "exports_dir": "data/exports",
             "logs_dir": "outputs/logs",
@@ -99,11 +99,11 @@ def test_discover_lmp_proj_reuse_report(tmp_path):
 
 def test_cp2k_inputs_slurm_and_no_output_status(tmp_path):
     cfg = _cfg(tmp_path)
-    a = tmp_path / "data/aimd_local_structures/a/structure.extxyz"
-    b = tmp_path / "data/aimd_local_structures/b/structure.extxyz"
+    a = tmp_path / "data/cp2k_aimd/seed_structures/a/structure.extxyz"
+    b = tmp_path / "data/cp2k_aimd/seed_structures/b/structure.extxyz"
     _write_extxyz(a)
     _write_extxyz(b)
-    manifest = tmp_path / "data/aimd_local_structures/aimd_local_manifest.csv"
+    manifest = tmp_path / "data/cp2k_aimd/seed_structures/aimd_local_manifest.csv"
     manifest.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(
         [
@@ -113,8 +113,8 @@ def test_cp2k_inputs_slurm_and_no_output_status(tmp_path):
     ).to_csv(manifest, index=False)
 
     input_manifest = write_cp2k_label_inputs(cfg, "tiny")
-    text_a = (tmp_path / "data/cp2k_seed_jobs/aimd_a/sp_force/input.inp").read_text(encoding="utf-8")
-    text_b = (tmp_path / "data/cp2k_seed_jobs/aimd_b/short_aimd/input.inp").read_text(encoding="utf-8")
+    text_a = (tmp_path / "data/cp2k_aimd/jobs/aimd_a/sp_force/input.inp").read_text(encoding="utf-8")
+    text_b = (tmp_path / "data/cp2k_aimd/jobs/aimd_b/short_aimd/input.inp").read_text(encoding="utf-8")
     assert "RUN_TYPE ENERGY_FORCE" in text_a
     assert "RUN_TYPE MD" in text_b
     assert "DFTD3(BJ)" in text_a

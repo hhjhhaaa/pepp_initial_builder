@@ -1,3 +1,0 @@
-dataset_status: insufficient_real_cp2k_frames
-usable_for_mlff_training: false
-failure_reason: real frames < 10

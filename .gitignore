@@ -30,7 +30,8 @@ production.extxyz
 production.lammpstrj
 prod.lammpstrj
 
-# Generated large structure folders
+# Generated data and structure folders
+data/
 data/systems/*/
 data/polymer/systems/*/
 data/pore/porems_models/*/
@@ -49,14 +50,6 @@ data/mlff_models/*/
 data/porems_models/*/
 data/silica_patches/*/
 outputs/logs/*
-
-# Keep small manifests and reports
-!data/**/manifest*.csv
-!data/**/manifest*.json
-!data/exports/*.csv
-!data/exports/*.json
-!data/aimd_exports/*.csv
-!data/aimd_exports/*.json
 !outputs/logs/*report*.txt
 !outputs/logs/*report*.json
 !outputs/logs/*validation*.csv

@@ -24,7 +24,7 @@ def make_manual_pore(tmp_path, config_path="configs/pore.yaml"):
         if path != "configs/pore.yaml":
             cfg = _merge_dict(cfg, load_pore_config(path))
     cfg["paths"]["root"] = str(tmp_path)
-    d = tmp_path / "data/porems_models/manual_test"
+    d = tmp_path / "data/pore/porems_models/manual_test"
     d.mkdir(parents=True)
     atoms = []
     for i in range(16):
