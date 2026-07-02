@@ -407,16 +407,32 @@ def collect_lammps_relax_manifests(config: Dict[str, Any]) -> Path:
     logs_dir = root / config["paths"].get("logs_dir", "outputs/logs")
     exports_dir = root / config["paths"].get("aimd_exports_dir", config["paths"].get("exports_dir", "data/exports"))
     manifest_parts = sorted(structures_dir.glob("lammps_relax_manifest.task*.csv"))
-    metric_parts = sorted(logs_dir.glob("full_pore_relax_metrics.task*.csv"))
-    snapshot_parts = sorted(exports_dir.glob("full_pore_snapshot_manifest.task*.csv"))
-    for parts, out in [
-        (manifest_parts, structures_dir / "lammps_relax_manifest.csv"),
-        (metric_parts, logs_dir / "full_pore_relax_metrics.csv"),
-        (snapshot_parts, exports_dir / "full_pore_snapshot_manifest.csv"),
-    ]:
-        frames = [pd.read_csv(path) for path in parts if path.exists()]
-        if frames:
-            pd.concat(frames, ignore_index=True).to_csv(out, index=False)
+    frames = [pd.read_csv(path) for path in manifest_parts if path.exists()]
+    if frames:
+        relax_df = pd.concat(frames, ignore_index=True)
+        relax_df.to_csv(structures_dir / "lammps_relax_manifest.csv", index=False)
+        metric_rows: List[Dict[str, Any]] = []
+        for row in relax_df.to_dict("records"):
+            if row.get("status") != "lammps_relaxed_full_pore" or not row.get("relaxed_extxyz_path"):
+                continue
+            try:
+                seed_dir = Path(str(row["relaxed_extxyz_path"])).parent
+                metric_rows.append(
+                    _relax_metrics(
+                        config,
+                        row,
+                        seed_dir,
+                        str(row["relaxed_extxyz_path"]),
+                        int(row.get("n_silica_atoms_fixed", 0)),
+                        int(row.get("lammps_warmup_steps", 0)),
+                        int(row.get("lammps_high_temp_steps", 0)),
+                        int(row.get("lammps_cool_steps", 0)),
+                        int(row.get("lammps_target_temp_steps", 0)),
+                    )
+                )
+            except Exception as exc:
+                metric_rows.append({"full_pore_seed_id": row.get("full_pore_seed_id", ""), "usable_for_cp2k_crop": False, "failure_reason": f"collect_metric_recompute_failed:{exc}"})
+        _write_relax_products(config, relax_df.to_dict("records"), metric_rows)
     return exports_dir / "full_pore_snapshot_manifest.csv"
 
 
