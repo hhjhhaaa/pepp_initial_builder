@@ -498,7 +498,49 @@ def write_lammps_relax_inputs(config: Dict[str, Any], mode: str = "tiny") -> Pat
         _write_relax_products(config, rows, metric_rows, suffix)
         write_lammps_relax_array_script(config, mode)
         return out
-    for row in pd.read_csv(seed_manifest).to_dict("records"):
+    seed_rows = pd.read_csv(seed_manifest).to_dict("records")
+    if selected_available_index is None and mode != "tiny":
+        for row in seed_rows:
+            seed_id = str(row.get("full_pore_seed_id", ""))
+            if not str(row.get("status", "")).startswith("available"):
+                continue
+            seed_extxyz = Path(str(row.get("extxyz_path", "")))
+            rows.append(
+                {
+                    "full_pore_seed_id": seed_id,
+                    "status": "planned_slurm_array_not_run",
+                    "failure_reason": "",
+                    "raw_seed_extxyz_path": str(seed_extxyz),
+                    "relaxed_extxyz_path": "",
+                    "source_stage": "",
+                    "relax_is_training_data": False,
+                    "relax_is_production_md": False,
+                    "lammps_relax_dir": str(seed_extxyz.parent / "lammps_relax"),
+                    "temperature_K": float(relax_cfg.get("temperature_K", 523.0)),
+                    "initial_temperature_K": float(relax_cfg.get("initial_temperature_K", 300.0)),
+                    "high_temperature_K": float(relax_cfg.get("high_temperature_K", 650.0)),
+                    "timestep_fs": float(relax_cfg.get("timestep_fs", 0.5)),
+                    "lammps_warmup_steps": warmup_steps,
+                    "lammps_high_temp_steps": high_steps,
+                    "lammps_cool_steps": cool_steps,
+                    "lammps_target_temp_steps": target_steps,
+                    "lammps_total_steps": warmup_steps + high_steps + cool_steps + target_steps,
+                    "lammps_total_time_ps": (warmup_steps + high_steps + cool_steps + target_steps) * float(relax_cfg.get("timestep_fs", 0.5)) / 1000.0,
+                    "lammps_protocol": relax_cfg.get("protocol", "fixed_silica_pore_polymer_multistage_anneal_v1"),
+                    "full_pore_box_compression": bool(relax_cfg.get("full_pore_box_compression", False)),
+                    "polymer_architecture": row.get("polymer_architecture", ""),
+                    "pe_variant": row.get("pe_variant", ""),
+                    "pp_variant": row.get("pp_variant", ""),
+                    "composition": row.get("composition", ""),
+                    "loading_mode": row.get("loading_mode", ""),
+                    "seed": row.get("seed", ""),
+                    "atom_roles_path": row.get("atom_roles_path", ""),
+                }
+            )
+        pd.DataFrame(rows).to_csv(out, index=False)
+        write_lammps_relax_array_script(config, mode)
+        return out
+    for row in seed_rows:
         seed_id = str(row.get("full_pore_seed_id", ""))
         if str(row.get("status", "")).startswith("available"):
             available_counter += 1
