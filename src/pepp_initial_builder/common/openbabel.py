@@ -21,7 +21,13 @@ def convert_with_obabel(input_path: str | Path, output_path: str | Path, configu
     src = Path(input_path)
     dst = Path(output_path)
     dst.parent.mkdir(parents=True, exist_ok=True)
-    proc = subprocess.run([exe, str(src), "-O", str(dst)], text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False)
+    cmd = [exe]
+    if src.suffix.lower() == ".pdb":
+        cmd.extend(["-ipdb", str(src), "-ab"])
+    else:
+        cmd.append(str(src))
+    cmd.extend(["-O", str(dst)])
+    proc = subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False)
     if proc.returncode != 0 or not dst.exists():
         raise RuntimeError(f"Open Babel conversion failed for {src}: {proc.stdout.strip()}")
     return dst
