@@ -123,6 +123,7 @@ def input_text(aimd_id: str, label_mode: str, box: Tuple[float, float, float], c
         scf_solver_block = f"""      &OT
         PRECONDITIONER {cp2k.get('ot_preconditioner', 'FULL_SINGLE_INVERSE')}
         MINIMIZER {cp2k.get('ot_minimizer', 'DIIS')}
+        STEPSIZE {float(cp2k.get('ot_stepsize', 0.08)):.6f}
         ENERGY_GAP {float(cp2k.get('ot_energy_gap', 0.001)):.6f}
       &END OT
       &OUTER_SCF

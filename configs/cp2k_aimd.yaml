@@ -110,6 +110,7 @@ cp2k:
   outer_scf_max: 20
   ot_preconditioner: FULL_ALL
   ot_minimizer: DIIS
+  ot_stepsize: 0.08
   ot_energy_gap: 0.001
   scf_mixing: BROYDEN_MIXING
   added_mos: 100
