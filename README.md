@@ -110,19 +110,44 @@ main:  1,000,000 + 2,000,000 + 1,000,000 + 8,000,000 steps = 6 ns, extended prod
 
 The tiny setting is deliberately short so the HPC toolchain can be validated quickly. It is not a claim of structural equilibration. For production analysis, density/contact convergence should be checked from the pilot/main LAMMPS trajectories before increasing CP2K crop volume.
 
-Important outputs:
+Run-scoped production layout:
 
 ```text
-data/exports/polymer_initial_manifest.csv
-data/exports/pore_model_manifest.csv
-data/exports/silica_patch_manifest.csv
-data/exports/mlff_seed_manifest.csv
-data/exports/aimd_seed_manifest.csv
-data/exports/cp2k_job_manifest.csv
-data/exports/aimd_dataset_manifest.csv
+data/runs/<run_id>/exports/polymer_initial_manifest.csv
+data/runs/<run_id>/exports/pore_model_manifest.csv
+data/runs/<run_id>/exports/silica_patch_manifest.csv
+data/runs/<run_id>/exports/mlff_seed_manifest.csv
+data/runs/<run_id>/exports/aimd_seed_manifest.csv
+data/runs/<run_id>/exports/cp2k_job_manifest.csv
+data/runs/<run_id>/exports/aimd_dataset_manifest.csv
+outputs/runs/<run_id>/logs/data_generation_summary.json
 ```
 
-`data/` is a generated workspace and is ignored by Git. The repository tracks code, configs, scripts, tests, and small audit text only; generated structures, manifests, CP2K jobs, parsed outputs, and AIMD extxyz files stay local or move by rsync.
+Production configs with `run.run_id` write generated data under `data/runs/<run_id>/...` and logs, figures, and Slurm helpers under `outputs/runs/<run_id>/...`. New mesoporous silica outputs use domain names inside the run:
+
+```text
+data/runs/<run_id>/mesoporous_silica/pore_models
+data/runs/<run_id>/mesoporous_silica/surface_patches
+data/runs/<run_id>/mesoporous_silica/surface_sites
+```
+
+This cleanup is a breaking path refactor. Old run-local names such as `data/runs/<run_id>/pore/porems_models` and `data/runs/<run_id>/pore/silica_patches` are not preserved by compatibility readers.
+
+`data/` is a generated workspace and is ignored by Git. The repository tracks code, configs, scripts, tests, and small audit text only; generated structures, manifests, CP2K jobs, parsed outputs, and AIMD extxyz files stay local or move by rsync. Legacy global production directories such as `data/pore`, `data/mlff_seed`, and `data/cp2k_aimd` should be treated as archive candidates after confirming their contents are no longer needed.
+
+Cleanup candidates to list before deleting:
+
+```text
+data_backup_minloop_/
+slurm-560*.out
+**/__pycache__/
+src/pepp_initial_builder.egg-info/
+data/pore/
+data/mlff_seed/
+data/cp2k_aimd/
+```
+
+Do not delete an active run directory while jobs are still running, especially `data/runs/pilot_20260703_fullpore_relaxed_cp2k` or `outputs/runs/pilot_20260703_fullpore_relaxed_cp2k`.
 
 CP2K is not assumed to run in local WSL. Slurm scripts contain a module verification helper and conservative array throttles:
 

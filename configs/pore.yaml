@@ -1,8 +1,9 @@
 paths:
   root: .
   bulk_initial_manifest: data/exports/polymer_initial_manifest.csv
-  porems_models_dir: data/pore/porems_models
-  silica_patches_dir: data/pore/silica_patches
+  porems_models_dir: data/mesoporous_silica/pore_models
+  silica_patches_dir: data/mesoporous_silica/surface_patches
+  surface_sites_dir: data/mesoporous_silica/surface_sites
   aimd_local_structures_dir: data/cp2k_aimd/seed_structures
   full_pore_seed_structures_dir: data/mlff_seed/structures
   aimd_exports_dir: data/exports

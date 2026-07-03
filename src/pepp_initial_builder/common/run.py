@@ -16,8 +16,9 @@ def apply_run_namespace(config: Dict[str, Any]) -> Dict[str, Any]:
     paths = config["paths"]
     paths.update(
         {
-            "porems_models_dir": f"{data_base}/pore/porems_models",
-            "silica_patches_dir": f"{data_base}/pore/silica_patches",
+            "porems_models_dir": f"{data_base}/mesoporous_silica/pore_models",
+            "silica_patches_dir": f"{data_base}/mesoporous_silica/surface_patches",
+            "surface_sites_dir": f"{data_base}/mesoporous_silica/surface_sites",
             "full_pore_seed_structures_dir": f"{data_base}/mlff_seed/structures",
             "aimd_local_structures_dir": f"{data_base}/cp2k_aimd/seed_structures",
             "cp2k_jobs_dir": f"{data_base}/cp2k_aimd/jobs",

@@ -70,7 +70,7 @@ def scan_porems_python_packages(search_roots: Sequence[Path]) -> List[Dict[str, 
 def discover_porems(config: Dict[str, Any]) -> Dict[str, Any]:
     ensure_pore_dirs(config)
     if config.get("porems", {}).get("enabled") is False:
-        return {"available": False, "source": "disabled_by_config", "executable": None, "python_package_found": False, "python_package_error": "disabled_by_config", "version": None, "python_executable": None, "discovered_python_packages": [], "candidates": [], "examples": [], "templates": [], "manual_user_input_allowed": True, "manual_user_input_note": "Place extxyz/pdb pore models under data/pore/porems_models/manual_* and rerun builders."}
+        return {"available": False, "source": "disabled_by_config", "executable": None, "python_package_found": False, "python_package_error": "disabled_by_config", "version": None, "python_executable": None, "discovered_python_packages": [], "candidates": [], "examples": [], "templates": [], "manual_user_input_allowed": True, "manual_user_input_note": "Place extxyz/pdb pore models under paths.porems_models_dir/manual_* and rerun builders."}
     tools = config["tools"]
     hint_value = tools.get("porems_path_hint")
     hint = Path(str(hint_value)).expanduser() if hint_value else None
@@ -103,7 +103,7 @@ def discover_porems(config: Dict[str, Any]) -> Dict[str, Any]:
             version = f"version_probe_failed: {exc}"
     external_python = next((pkg["python_executable"] for pkg in discovered_packages if pkg.get("python_executable")), None)
     external_version = next((pkg["version"] for pkg in discovered_packages if pkg.get("version")), None)
-    return {"available": bool(executable or package_found or discovered_packages), "source": "installed_porems" if (executable or package_found or discovered_packages) else "not_available", "executable": executable, "python_package_found": package_found, "python_package_error": package_error, "version": version or external_version, "python_executable": sys.executable if package_found else external_python, "discovered_python_packages": discovered_packages, "candidates": unique, "examples": [path for path in unique if "example" in path.lower()], "templates": [path for path in unique if "template" in path.lower()], "manual_user_input_allowed": True, "manual_user_input_note": "Place extxyz/pdb pore models under data/pore/porems_models/manual_* and rerun builders."}
+    return {"available": bool(executable or package_found or discovered_packages), "source": "installed_porems" if (executable or package_found or discovered_packages) else "not_available", "executable": executable, "python_package_found": package_found, "python_package_error": package_error, "version": version or external_version, "python_executable": sys.executable if package_found else external_python, "discovered_python_packages": discovered_packages, "candidates": unique, "examples": [path for path in unique if "example" in path.lower()], "templates": [path for path in unique if "template" in path.lower()], "manual_user_input_allowed": True, "manual_user_input_note": "Place extxyz/pdb pore models under paths.porems_models_dir/manual_* and rerun builders."}
 
 
 def write_porems_discovery(config: Dict[str, Any]) -> Tuple[Path, Path]:

@@ -28,7 +28,7 @@ def pore_root(config: Dict[str, Any]) -> Path:
 
 def ensure_pore_dirs(config: Dict[str, Any]) -> None:
     root = pore_root(config)
-    for key in ["porems_models_dir", "silica_patches_dir", "aimd_local_structures_dir", "full_pore_seed_structures_dir", "aimd_exports_dir", "logs_dir", "figures_dir"]:
+    for key in ["porems_models_dir", "silica_patches_dir", "surface_sites_dir", "aimd_local_structures_dir", "full_pore_seed_structures_dir", "aimd_exports_dir", "logs_dir", "figures_dir"]:
         path = config["paths"].get(key)
         if path:
             (root / path).mkdir(parents=True, exist_ok=True)

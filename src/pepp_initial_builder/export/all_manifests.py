@@ -28,18 +28,24 @@ def _display(path: Path) -> str:
     return text.removeprefix(prefix)
 
 
+def _resolve(root: Path, value: str | Path) -> Path:
+    path = Path(value)
+    return path if path.is_absolute() else root / path
+
+
 def export_all_manifests(config: Dict[str, Any] | None = None) -> Tuple[Path, Path]:
     root = _root(config)
-    exports = root / "data" / "exports"
-    exports.mkdir(parents=True, exist_ok=True)
     paths = config.get("paths", {}) if config else {}
-    porems_dir = root / paths.get("porems_models_dir", "data/pore/porems_models")
-    patches_dir = root / paths.get("silica_patches_dir", "data/pore/silica_patches")
-    mlff_seed_dir = root / paths.get("full_pore_seed_structures_dir", "data/mlff_seed/structures")
-    aimd_seed_dir = root / paths.get("aimd_local_structures_dir", "data/cp2k_aimd/seed_structures")
-    jobs_dir = root / paths.get("jobs_dir", "outputs/jobs")
+    exports = _resolve(root, paths.get("exports_dir", paths.get("aimd_exports_dir", "data/exports")))
+    exports.mkdir(parents=True, exist_ok=True)
+    porems_dir = _resolve(root, paths.get("porems_models_dir", "data/mesoporous_silica/pore_models"))
+    patches_dir = _resolve(root, paths.get("silica_patches_dir", "data/mesoporous_silica/surface_patches"))
+    mlff_seed_dir = _resolve(root, paths.get("full_pore_seed_structures_dir", "data/mlff_seed/structures"))
+    aimd_seed_dir = _resolve(root, paths.get("aimd_local_structures_dir", "data/cp2k_aimd/seed_structures"))
+    jobs_dir = _resolve(root, paths.get("jobs_dir", "outputs/jobs"))
+    polymer_src = _resolve(root, paths.get("bulk_initial_manifest", str(exports / "mlff_start_manifest.csv")))
     mapping = [
-        (root / "data" / "exports" / "mlff_start_manifest.csv", exports / "polymer_initial_manifest.csv"),
+        (polymer_src, exports / "polymer_initial_manifest.csv"),
         (porems_dir / "pore_model_manifest.csv", exports / "pore_model_manifest.csv"),
         (patches_dir / "silica_patch_manifest.csv", exports / "silica_patch_manifest.csv"),
         (mlff_seed_dir / "full_pore_seed_manifest.csv", exports / "mlff_seed_manifest.csv"),
