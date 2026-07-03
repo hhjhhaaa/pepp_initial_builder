@@ -10,7 +10,7 @@ def array_script(label_mode: str, rows: List[Dict[str, str]], config: Dict[str, 
     hpc = config["hpc"]
     mode_rows = [row for row in rows if row.get("label_mode") == label_mode]
     job_dirs = " ".join(f'"{row["job_dir"]}"' for row in mode_rows)
-    time_key = "time_sp" if label_mode == "sp_force" else "time_aimd"
+    time_line = f"#SBATCH --time={hpc['time_sp']}\n" if label_mode == "sp_force" else ""
     throttle_key = "sp_array_throttle" if label_mode == "sp_force" else "aimd_array_throttle"
     throttle = int(hpc.get(throttle_key, 0) or 0)
     array_spec = f"0-{max(len(mode_rows) - 1, 0)}" + (f"%{throttle}" if throttle > 0 and mode_rows else "")
@@ -21,7 +21,7 @@ def array_script(label_mode: str, rows: List[Dict[str, str]], config: Dict[str, 
 #SBATCH --nodes={int(hpc['nodes'])}
 #SBATCH --ntasks-per-node={int(hpc['ntasks_per_node'])}
 #SBATCH --cpus-per-task={int(hpc['cpus_per_task'])}
-#SBATCH --time={hpc[time_key]}
+{time_line.rstrip()}
 #SBATCH --array={array_spec}
 
 module purge
