@@ -107,9 +107,18 @@ def kind_block(config: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def input_text(aimd_id: str, label_mode: str, box: Tuple[float, float, float], config: Dict[str, Any], mode: str) -> str:
+def valence_electron_count(elems: Sequence[str]) -> int:
+    valence = {"H": 1, "C": 4, "O": 6, "Si": 4}
+    return sum(valence.get(elem, 0) for elem in elems)
+
+
+def input_text(aimd_id: str, label_mode: str, box: Tuple[float, float, float], config: Dict[str, Any], mode: str, elems: Sequence[str] | None = None) -> str:
     cp2k = config["cp2k"]
     run_type = "ENERGY_FORCE" if label_mode == "sp_force" else "MD"
+    electron_count = valence_electron_count(elems or [])
+    odd_electrons = bool(elems) and electron_count % 2 == 1
+    multiplicity = 2 if odd_electrons else int(cp2k.get("multiplicity", 1))
+    uks_line = "    UKS TRUE\n" if odd_electrons else ""
     if str(cp2k.get("scf_solver", "DIAGONALIZATION")).upper() == "OT":
         scf_solver_block = f"""      &OT
         PRECONDITIONER {cp2k.get('ot_preconditioner', 'FULL_SINGLE_INVERSE')}
@@ -171,7 +180,8 @@ def input_text(aimd_id: str, label_mode: str, box: Tuple[float, float, float], c
     BASIS_SET_FILE_NAME {cp2k['basis_set_file']}
     POTENTIAL_FILE_NAME {cp2k['potential_file']}
     CHARGE {int(cp2k.get('charge', 0))}
-    MULTIPLICITY {int(cp2k.get('multiplicity', 1))}
+    MULTIPLICITY {multiplicity}
+{uks_line.rstrip()}
     &MGRID
       CUTOFF {float(cp2k['cutoff_Ry']):.1f}
       REL_CUTOFF {float(cp2k['rel_cutoff_Ry']):.1f}
@@ -227,7 +237,7 @@ def write_cp2k_label_inputs(config: Dict[str, Any], mode: str = "main") -> Path:
             coords_xyz(job_dir / "coords.xyz", elems, coords)
             coords_inc(job_dir / "coords.inc", elems, coords)
             (job_dir / "cell.inc").write_text(cell_inc(box), encoding="utf-8")
-            (job_dir / "input.inp").write_text(input_text(aimd_id, label_mode, box, config, mode), encoding="utf-8")
+            (job_dir / "input.inp").write_text(input_text(aimd_id, label_mode, box, config, mode, elems), encoding="utf-8")
             metadata = {
                 "aimd_structure_id": aimd_id,
                 "family": family,
