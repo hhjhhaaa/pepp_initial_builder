@@ -105,7 +105,12 @@ cp2k:
   cutoff_Ry: 400
   rel_cutoff_Ry: 50
   eps_scf: 1.0e-5
-  max_scf: 100
+  max_scf: 300
+  scf_solver: OT
+  outer_scf_max: 20
+  ot_preconditioner: FULL_SINGLE_INVERSE
+  ot_minimizer: DIIS
+  ot_energy_gap: 0.001
   scf_mixing: BROYDEN_MIXING
   added_mos: 100
   electronic_smearing_K: 300

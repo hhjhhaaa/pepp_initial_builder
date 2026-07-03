@@ -110,6 +110,25 @@ def kind_block(config: Dict[str, Any]) -> str:
 def input_text(aimd_id: str, label_mode: str, box: Tuple[float, float, float], config: Dict[str, Any], mode: str) -> str:
     cp2k = config["cp2k"]
     run_type = "ENERGY_FORCE" if label_mode == "sp_force" else "MD"
+    if str(cp2k.get("scf_solver", "DIAGONALIZATION")).upper() == "OT":
+        scf_solver_block = f"""      &OT
+        PRECONDITIONER {cp2k.get('ot_preconditioner', 'FULL_SINGLE_INVERSE')}
+        MINIMIZER {cp2k.get('ot_minimizer', 'DIIS')}
+        ENERGY_GAP {float(cp2k.get('ot_energy_gap', 0.001)):.6f}
+      &END OT
+      &OUTER_SCF
+        MAX_SCF {int(cp2k.get('outer_scf_max', 20))}
+        EPS_SCF {float(cp2k['eps_scf']):.3e}
+      &END OUTER_SCF"""
+    else:
+        scf_solver_block = f"""      ADDED_MOS {int(cp2k.get('added_mos', 0))}
+      &SMEAR
+        METHOD FERMI_DIRAC
+        ELECTRONIC_TEMPERATURE {float(cp2k.get('electronic_smearing_K', 300))}
+      &END SMEAR
+      &MIXING
+        METHOD {cp2k.get('scf_mixing', 'BROYDEN_MIXING')}
+      &END MIXING"""
     motion = """&MOTION
   &PRINT
     &FORCES ON
@@ -160,14 +179,7 @@ def input_text(aimd_id: str, label_mode: str, box: Tuple[float, float, float], c
     &SCF
       MAX_SCF {int(cp2k['max_scf'])}
       EPS_SCF {float(cp2k['eps_scf']):.3e}
-      ADDED_MOS {int(cp2k.get('added_mos', 0))}
-      &SMEAR
-        METHOD FERMI_DIRAC
-        ELECTRONIC_TEMPERATURE {float(cp2k.get('electronic_smearing_K', 300))}
-      &END SMEAR
-      &MIXING
-        METHOD {cp2k.get('scf_mixing', 'BROYDEN')}
-      &END MIXING
+{scf_solver_block}
     &END SCF
     &XC
       &XC_FUNCTIONAL {cp2k['xc_functional']}
