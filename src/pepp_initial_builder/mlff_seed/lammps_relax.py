@@ -468,9 +468,9 @@ if command -v conda >/dev/null 2>&1; then
   set -u
 fi
 export PYTHONPATH="$PWD/src:${{PYTHONPATH:-}}"
-PYTHON_CMD=${{PYTHON_CMD:-python}}
+PYTHON_CMD=${{PYTHON_CMD:-/public/home/jinhao.hu/.conda/envs/peppmixure/bin/python}}
 if ! command -v "$PYTHON_CMD" >/dev/null 2>&1; then
-  PYTHON_CMD=python3
+  PYTHON_CMD=python
 fi
 "$PYTHON_CMD" - <<'PY'
 import os
@@ -496,9 +496,9 @@ if command -v conda >/dev/null 2>&1; then
   set -u
 fi
 export PYTHONPATH="$PWD/src:${PYTHONPATH:-}"
-PYTHON_CMD=${PYTHON_CMD:-python}
+PYTHON_CMD=${PYTHON_CMD:-/public/home/jinhao.hu/.conda/envs/peppmixure/bin/python}
 if ! command -v "$PYTHON_CMD" >/dev/null 2>&1; then
-  PYTHON_CMD=python3
+  PYTHON_CMD=python
 fi
 "$PYTHON_CMD" scripts/mlff_seed/collect_lammps_relax.py --config configs/mlff_seed.yaml
 """,

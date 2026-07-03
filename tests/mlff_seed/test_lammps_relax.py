@@ -52,4 +52,5 @@ def test_lammps_relax_array_activates_project_env(tmp_path):
     assert "conda activate peppmixure" in collect
     assert 'export PYTHONPATH="$PWD/src:${PYTHONPATH:-}"' in text
     assert 'export PYTHONPATH="$PWD/src:${PYTHONPATH:-}"' in collect
-    assert "PYTHON_CMD=${PYTHON_CMD:-python}" in text
+    assert "PYTHON_CMD=${PYTHON_CMD:-/public/home/jinhao.hu/.conda/envs/peppmixure/bin/python}" in text
+    assert "PYTHON_CMD=${PYTHON_CMD:-/public/home/jinhao.hu/.conda/envs/peppmixure/bin/python}" in collect
