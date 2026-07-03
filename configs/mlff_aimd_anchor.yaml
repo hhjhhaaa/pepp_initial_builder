@@ -1,0 +1,95 @@
+paths:
+  root: .
+  anchor_root: data/mlff_aimd_anchor
+run:
+  run_id: anchor_v1_pepp_pc_silica
+  clean_start: false
+  forbid_stale_outputs: true
+scope:
+  purpose: dft_aimd_anchor_dataset_for_joint_chosi_mlff_finetune
+  elements: [C, H, O, Si]
+  no_reactions: true
+  no_fake_labels: true
+  labels_must_be_real_dft: true
+domains:
+  bulk_core:
+    priority: first
+    description: PE/PP bulk and blend core domain.
+    systems: [PE100, PP100, PE75_PP25, PE50_PP50, PE25_PP75]
+    core_systems: [PE100, PP100, PE50_PP50]
+    density_scales: [0.95, 1.00, 1.05, 1.10]
+    initial_structure_status: planned_not_generated
+    dft_sources: [AIMD_NVT, DFT_SP, torsion_scan, perturbation]
+  pc_extension:
+    priority: gated_after_bulk_core
+    description: BPA-polycarbonate chemical-complexity extension for the same joint model.
+    systems: [PC_monomer, PC_dimer, PC_trimer, PC_short_chain, PC100, PE50_PC50_or_PP50_PC50]
+    initial_structure_status: pending_builder_gate
+    gate_requires:
+      - bisphenol_A_polycarbonate_identity_confirmed
+      - atom_typing_complete
+      - bonds_angles_dihedrals_impropers_complete
+      - lammps_minimization_stable
+      - short_nvt_stable
+    dft_sources: [DFT_SP, torsion_scan, conformer_scan, short_AIMD_NVT]
+  silica_interface:
+    priority: active_extension
+    description: SiO2/SiOH polymer-wall interface anchors from relaxed full-pore or slab sources.
+    systems:
+      - amorphous_SiO2_bulk_or_slab
+      - hydroxylated_silica_SiOH_rich
+      - dehydroxylated_silica_SiOSi_rich
+      - mixed_hydroxylated_dehydroxylated_surface
+      - PE_segment_near_silica
+      - PP_segment_near_silica
+      - PC_segment_near_silica
+      - PE_PP_blend_near_silica
+      - polymer_confined_between_silica_walls
+    initial_structure_status: partially_available_from_pilot_full_pore_relaxed_sources
+    source_stage_required_for_training: lammps_relaxed_full_pore
+    dft_sources: [ENERGY_FORCE, short_AIMD_NVT]
+sampling_targets:
+  pepp_silica_interface:
+    PE_wall_contact_min: 3
+    PP_methyl_or_backbone_wall_contact_min: 3
+    PE_PP_mixed_near_wall_min: 3
+    crowded_polymer_wall_min: 2
+    silica_only_baseline_min: 2
+metadata_required:
+  frame:
+    - frame_id
+    - trajectory_id
+    - system_id
+    - domain
+    - composition
+    - PE_fraction
+    - PP_fraction
+    - PC_fraction
+    - density
+    - rho_over_rho_eq
+    - temperature
+    - ensemble
+    - seed
+    - source_type
+    - DFT_code
+    - DFT_functional
+    - dispersion
+    - basis_or_cutoff
+    - pseudopotential
+    - time_fs
+    - frame_index
+    - energy
+    - forces_available
+    - stress_available
+    - SCF_converged
+    - geometry_valid
+    - split
+  silica_interface:
+    - surface_type
+    - hydroxyl_density
+    - silica_fixed
+    - mobile_shell_radius
+    - polymer_wall_distance
+    - adsorption_state
+    - confined_geometry
+    - pore_size_or_wall_distance
