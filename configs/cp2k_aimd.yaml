@@ -105,7 +105,7 @@ cp2k:
   cutoff_Ry: 400
   rel_cutoff_Ry: 50
   eps_scf: 1.0e-5
-  max_scf: 800
+  max_scf: 2000
   scf_solver: OT
   outer_scf_max: 20
   ot_preconditioner: FULL_ALL
@@ -135,8 +135,8 @@ hpc:
   nodes: 1
   ntasks_per_node: 32
   cpus_per_task: 1
-  time_sp: "04:00:00"
-  time_aimd: "24:00:00"
+  time_sp:
+  time_aimd:
   sp_array_throttle: 10
   aimd_array_throttle: 4
 dataset:

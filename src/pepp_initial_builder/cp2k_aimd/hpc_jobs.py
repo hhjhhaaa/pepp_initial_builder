@@ -10,7 +10,9 @@ def array_script(label_mode: str, rows: List[Dict[str, str]], config: Dict[str, 
     hpc = config["hpc"]
     mode_rows = [row for row in rows if row.get("label_mode") == label_mode]
     job_dirs = " ".join(f'"{row["job_dir"]}"' for row in mode_rows)
-    time_line = f"#SBATCH --time={hpc['time_sp']}\n" if label_mode == "sp_force" else ""
+    raw_time_value = hpc.get("time_sp") if label_mode == "sp_force" else hpc.get("time_aimd")
+    time_value = str(raw_time_value or "").strip()
+    time_line = f"#SBATCH --time={time_value}\n" if time_value else ""
     throttle_key = "sp_array_throttle" if label_mode == "sp_force" else "aimd_array_throttle"
     throttle = int(hpc.get(throttle_key, 0) or 0)
     array_spec = f"0-{max(len(mode_rows) - 1, 0)}" + (f"%{throttle}" if throttle > 0 and mode_rows else "")
