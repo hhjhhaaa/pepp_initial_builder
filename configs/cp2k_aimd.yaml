@@ -108,7 +108,7 @@ cp2k:
   max_scf: 300
   scf_solver: OT
   outer_scf_max: 20
-  ot_preconditioner: FULL_SINGLE_INVERSE
+  ot_preconditioner: FULL_ALL
   ot_minimizer: DIIS
   ot_energy_gap: 0.001
   scf_mixing: BROYDEN_MIXING
