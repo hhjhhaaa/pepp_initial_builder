@@ -461,6 +461,12 @@ def write_lammps_relax_array_script(config: Dict[str, Any], mode: str = "pilot")
 
 set -euo pipefail
 export LAMMPS_EXECUTABLE="{lmp}"
+if command -v conda >/dev/null 2>&1; then
+  set +u
+  eval "$(conda shell.bash hook)" || true
+  conda activate peppmixure || true
+  set -u
+fi
 PYTHON_CMD=${{PYTHON_CMD:-python}}
 if ! command -v "$PYTHON_CMD" >/dev/null 2>&1; then
   PYTHON_CMD=python3
@@ -482,6 +488,12 @@ PY
     collect.write_text(
         """#!/bin/bash
 set -euo pipefail
+if command -v conda >/dev/null 2>&1; then
+  set +u
+  eval "$(conda shell.bash hook)" || true
+  conda activate peppmixure || true
+  set -u
+fi
 PYTHON_CMD=${PYTHON_CMD:-python}
 if ! command -v "$PYTHON_CMD" >/dev/null 2>&1; then
   PYTHON_CMD=python3
