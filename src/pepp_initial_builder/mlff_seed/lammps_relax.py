@@ -467,6 +467,7 @@ if command -v conda >/dev/null 2>&1; then
   conda activate peppmixure || true
   set -u
 fi
+export PYTHONPATH="$PWD/src:${{PYTHONPATH:-}}"
 PYTHON_CMD=${{PYTHON_CMD:-python}}
 if ! command -v "$PYTHON_CMD" >/dev/null 2>&1; then
   PYTHON_CMD=python3
@@ -494,6 +495,7 @@ if command -v conda >/dev/null 2>&1; then
   conda activate peppmixure || true
   set -u
 fi
+export PYTHONPATH="$PWD/src:${PYTHONPATH:-}"
 PYTHON_CMD=${PYTHON_CMD:-python}
 if ! command -v "$PYTHON_CMD" >/dev/null 2>&1; then
   PYTHON_CMD=python3
