@@ -18,6 +18,55 @@ def parse_energy_hartree(text: str) -> float | None:
     return None
 
 
+def parse_forces_au_from_cp2k_out(text: str, expected_elems: Sequence[str]) -> List[Tuple[float, float, float]]:
+    """Parse the last FORCE_EVAL/PRINT/FORCES block from cp2k.out.
+
+    CP2K prints these forces in atomic units when FORCE_EVAL/PRINT/FORCES is
+    enabled. The table contains atom index, kind, element, and Fx/Fy/Fz.
+    """
+    blocks: List[List[Tuple[float, float, float]]] = []
+    lines = text.splitlines()
+    idx = 0
+    while idx < len(lines):
+        line = lines[idx]
+        if "ATOMIC FORCES" not in line.upper() or "[A.U.]" not in line.upper():
+            idx += 1
+            continue
+        idx += 1
+        current: List[Tuple[float, float, float]] = []
+        while idx < len(lines):
+            stripped = lines[idx].strip()
+            upper = stripped.upper()
+            if not stripped:
+                if current:
+                    break
+                idx += 1
+                continue
+            if "SUM OF ATOMIC FORCES" in upper:
+                break
+            parts = stripped.split()
+            if len(parts) >= 6:
+                try:
+                    int(parts[0])
+                    element = parts[2]
+                    fx, fy, fz = float(parts[-3]), float(parts[-2]), float(parts[-1])
+                except Exception:
+                    idx += 1
+                    continue
+                if not expected_elems or element == expected_elems[len(current)]:
+                    current.append((fx, fy, fz))
+            idx += 1
+        if current:
+            blocks.append(current)
+        idx += 1
+    if not blocks:
+        return []
+    forces = blocks[-1]
+    if expected_elems and len(forces) != len(expected_elems):
+        return []
+    return forces
+
+
 def cp2k_health(text: str) -> Tuple[bool, str]:
     lower = text.lower()
     if any(token in lower for token in ("abort", "fatal", "segmentation fault", "forrtl", "error termination", "cannot allocate memory", "oom-kill")):
@@ -113,9 +162,12 @@ def parse_cp2k_outputs(config: Dict[str, Any]) -> Path:
                 energy_h = parse_energy_hartree(text)
                 force_file = find_first(job_dir, [f"{project}-frc-1.xyz", f"{project}-frc-*.xyz", "forces.xyz", "*frc*.xyz", "*FRC*.xyz", "*forces*.xyz", "*FORCES*.xyz"])
                 force_frames = read_xyz_frames(force_file) if force_file else []
-                summary.update({"detected_position_file": str(job_dir / "coords.xyz"), "detected_force_file": str(force_file or ""), "detected_energy_file": str(cp2k_out), "n_position_frames": 1, "n_force_frames": len(force_frames), "n_energy_frames": 1 if energy_h is not None else 0})
-                if energy_h is not None and force_frames:
-                    force_values = force_frames[-1][1]
+                out_forces = parse_forces_au_from_cp2k_out(text, elems) if not force_frames else []
+                n_force_frames = len(force_frames) if force_frames else (1 if out_forces else 0)
+                detected_force = str(force_file or (cp2k_out if out_forces else ""))
+                summary.update({"detected_position_file": str(job_dir / "coords.xyz"), "detected_force_file": detected_force, "detected_energy_file": str(cp2k_out), "n_position_frames": 1, "n_force_frames": n_force_frames, "n_energy_frames": 1 if energy_h is not None else 0})
+                if energy_h is not None and (force_frames or out_forces):
+                    force_values = force_frames[-1][1] if force_frames else out_forces
                     if len(force_values) == len(elems):
                         forces = [[(x * force_factor, y * force_factor, z * force_factor) for x, y, z in force_values]]
                         energy_eV = energy_h * energy_factor

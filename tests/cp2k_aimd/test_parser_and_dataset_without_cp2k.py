@@ -106,6 +106,37 @@ def test_parser_fixture_energy_force_units_and_provenance(tmp_path):
     assert summary["n_frames_written"] == 1
 
 
+def test_parser_reads_energy_force_forces_from_cp2k_out(tmp_path):
+    config = _config(tmp_path)
+    job_dir = tmp_path / "jobs" / "s_out_force" / "sp_force"
+    job_dir.mkdir(parents=True)
+    _write_coords(job_dir / "coords.xyz")
+    (job_dir / "cp2k.out").write_text(
+        " ENERGY| Total FORCE_EVAL ( QS ) energy [a.u.]:              -2.000000000000\n"
+        " ATOMIC FORCES in [a.u.]\n"
+        " # Atom   Kind   Element          X              Y              Z\n"
+        "      1      1      Si        0.010000000000  0.000000000000  0.000000000000\n"
+        "      2      2      O         0.000000000000 -0.020000000000  0.000000000000\n"
+        " SUM OF ATOMIC FORCES           0.010000000000 -0.020000000000  0.000000000000\n"
+        " PROGRAM ENDED AT 2026-07-02 00:00:00\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "jobs" / "cp2k_label_input_manifest.csv").write_text(
+        "aimd_structure_id,family,patch_id,label_mode,cp2k_project,cp2k_run_type,status,job_dir\n"
+        f"s_out_force,silica_patch_only,patch_C,sp_force,s_out_force_sp_force,ENERGY_FORCE,cp2k_input_written_no_cp2k_run,{job_dir}\n",
+        encoding="utf-8",
+    )
+
+    parse_cp2k_outputs(config)
+    summary = yaml.safe_load((tmp_path / "parsed" / "s_out_force" / "sp_force" / "parse_summary.yaml").read_text(encoding="utf-8"))
+    frames = (tmp_path / "parsed" / "s_out_force" / "sp_force" / "frames.extxyz").read_text(encoding="utf-8")
+    assert summary["status"] == "parsed_real_cp2k_output"
+    assert summary["detected_force_file"].endswith("cp2k.out")
+    assert summary["n_force_frames"] == 1
+    assert "energy=-54.422772491976" in frames
+    assert "0.514220674760" in frames
+
+
 def test_parser_fixture_md_matched_frames_and_mismatch_summary(tmp_path):
     config = _config(tmp_path)
     job_dir = tmp_path / "jobs" / "s_md" / "short_aimd"

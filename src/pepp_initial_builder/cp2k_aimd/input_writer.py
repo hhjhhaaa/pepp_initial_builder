@@ -139,17 +139,18 @@ def input_text(aimd_id: str, label_mode: str, box: Tuple[float, float, float], c
       &MIXING
         METHOD {cp2k.get('scf_mixing', 'BROYDEN_MIXING')}
       &END MIXING"""
-    motion = """&MOTION
-  &PRINT
+    force_eval_print = """  &PRINT
     &FORCES ON
+      NDIGITS 12
     &END FORCES
-    &STRESS ON
-    &END STRESS
-  &END PRINT
-&END MOTION"""
+    &STRESS_TENSOR ON
+    &END STRESS_TENSOR
+  &END PRINT""" if label_mode == "sp_force" else ""
+    motion = ""
     if label_mode == "short_aimd":
         md = config["label_modes"]["short_nvt_aimd"]
         steps = int(md.get(f"steps_{mode}", md.get("steps_main", 2000)))
+        frame_stride = int(md.get("frame_stride", 20))
         motion = f"""&MOTION
   &MD
     ENSEMBLE {md.get("ensemble", "NVT")}
@@ -159,11 +160,19 @@ def input_text(aimd_id: str, label_mode: str, box: Tuple[float, float, float], c
   &END MD
   &PRINT
     &TRAJECTORY
+      FILENAME pos
+      FORMAT XYZ
       &EACH
-        MD {int(md.get("frame_stride", 20))}
+        MD {frame_stride}
       &END EACH
     &END TRAJECTORY
     &FORCES ON
+      FILENAME frc
+      FORMAT XYZ
+      UNIT hartree*bohr^-1
+      &EACH
+        MD {frame_stride}
+      &END EACH
     &END FORCES
     &STRESS ON
     &END STRESS
@@ -177,6 +186,7 @@ def input_text(aimd_id: str, label_mode: str, box: Tuple[float, float, float], c
 &FORCE_EVAL
   METHOD QS
   STRESS_TENSOR ANALYTICAL
+{force_eval_print}
   &DFT
     BASIS_SET_FILE_NAME {cp2k['basis_set_file']}
     POTENTIAL_FILE_NAME {cp2k['potential_file']}

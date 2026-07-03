@@ -117,6 +117,9 @@ def test_cp2k_inputs_slurm_and_no_output_status(tmp_path):
     assert not (tmp_path / "data/cp2k_aimd/jobs/aimd_b/short_aimd/input.inp").exists()
     assert "RUN_TYPE ENERGY_FORCE" in text_a
     assert "DFTD3(BJ)" in text_a
+    assert "&FORCE_EVAL" in text_a
+    assert "&FORCES ON" in text_a
+    assert text_a.index("&PRINT") < text_a.index("&DFT")
     assert "&CELL" in text_a
     assert "ABC 10.0000000000 10.0000000000 10.0000000000" in text_a
     assert "@INCLUDE coords.inc" in text_a
@@ -140,6 +143,8 @@ def test_cp2k_inputs_slurm_and_no_output_status(tmp_path):
     text_b = (tmp_path / "data/cp2k_aimd/jobs/aimd_b/short_aimd/input.inp").read_text(encoding="utf-8")
     assert "RUN_TYPE MD" in text_b
     assert "&MOTION" in text_b
+    assert "FILENAME pos" in text_b
+    assert "FILENAME frc" in text_b
 
     job_manifest = make_hpc_cp2k_jobs(cfg, "tiny")
     sp_script = (tmp_path / "outputs/jobs/run_cp2k_sp_array.sbatch").read_text(encoding="utf-8")
