@@ -107,6 +107,7 @@ cp2k:
   eps_scf: 1.0e-5
   max_scf: 100
   scf_mixing: BROYDEN_MIXING
+  added_mos: 100
   electronic_smearing_K: 300
   temperatures_K: [523.0, 650.0]
 label_modes:

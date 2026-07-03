@@ -160,6 +160,7 @@ def input_text(aimd_id: str, label_mode: str, box: Tuple[float, float, float], c
     &SCF
       MAX_SCF {int(cp2k['max_scf'])}
       EPS_SCF {float(cp2k['eps_scf']):.3e}
+      ADDED_MOS {int(cp2k.get('added_mos', 0))}
       &SMEAR
         METHOD FERMI_DIRAC
         ELECTRONIC_TEMPERATURE {float(cp2k.get('electronic_smearing_K', 300))}
