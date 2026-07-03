@@ -106,7 +106,7 @@ cp2k:
   rel_cutoff_Ry: 50
   eps_scf: 1.0e-5
   max_scf: 100
-  scf_mixing: BROYDEN
+  scf_mixing: BROYDEN_MIXING
   electronic_smearing_K: 300
   temperatures_K: [523.0, 650.0]
 label_modes:
