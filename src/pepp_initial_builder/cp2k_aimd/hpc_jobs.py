@@ -29,6 +29,7 @@ def array_script(label_mode: str, rows: List[Dict[str, str]], config: Dict[str, 
 module purge
 module load {hpc['cp2k_module_placeholder']}
 # export CP2K_DATA_DIR="__SET_CP2K_DATA_DIR_ON_HPC__"
+export OMPI_MCA_btl="${{OMPI_MCA_btl:-^openib}}"
 CP2K_CMD=${{CP2K_CMD:-{hpc['cp2k_command_default']}}}
 {selected_note}
 
