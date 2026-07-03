@@ -37,6 +37,43 @@ def nearest_silica_distance(coords: np.ndarray, polymer_idx: int, silica: Sequen
     return min(float(np.linalg.norm(coords[polymer_idx] - coords[j])) for j in silica)
 
 
+def surface_site_metadata(elems: Sequence[str], coords: np.ndarray, center_idx: int) -> Dict[str, Any]:
+    center = coords[center_idx]
+    oxygen = [idx for idx, elem in enumerate(elems) if elem == "O"]
+    hydrogen = [idx for idx, elem in enumerate(elems) if elem == "H"]
+    silicon = [idx for idx, elem in enumerate(elems) if elem == "Si"]
+    silanol_o: List[int] = []
+    siloxane_o: List[int] = []
+    for idx in oxygen:
+        oh = any(float(np.linalg.norm(coords[idx] - coords[h_idx])) <= 1.25 for h_idx in hydrogen)
+        si_neighbors = sum(1 for si_idx in silicon if float(np.linalg.norm(coords[idx] - coords[si_idx])) <= 2.15)
+        if oh:
+            silanol_o.append(idx)
+        elif si_neighbors > 0:
+            siloxane_o.append(idx)
+
+    def distances(indices: Sequence[int]) -> List[float]:
+        return [float(np.linalg.norm(center - coords[idx])) for idx in indices]
+
+    oh_dist = distances(silanol_o)
+    siloxane_dist = distances(siloxane_o)
+    nearest_oh = min(oh_dist) if oh_dist else float("inf")
+    nearest_siloxane = min(siloxane_dist) if siloxane_dist else float("inf")
+    if nearest_oh == float("inf") and nearest_siloxane == float("inf"):
+        nearest_type = "unknown"
+    elif nearest_oh <= nearest_siloxane:
+        nearest_type = "silanol_OH"
+    else:
+        nearest_type = "siloxane_O"
+    return {
+        "nearest_site_type": nearest_type,
+        "n_silanol_OH_within_5A": sum(1 for value in oh_dist if value <= 5.0),
+        "n_siloxane_O_within_5A": sum(1 for value in siloxane_dist if value <= 5.0),
+        "nearest_OH_distance_A": "" if nearest_oh == float("inf") else nearest_oh,
+        "nearest_siloxane_O_distance_A": "" if nearest_siloxane == float("inf") else nearest_siloxane,
+    }
+
+
 def composition_from_source(source: Dict[str, str]) -> tuple[float, float]:
     text = source.get("source_full_pore_id", "")
     if "PE100" in text:
@@ -123,6 +160,7 @@ def select_local_environments(elems: Sequence[str], coords: np.ndarray, source: 
                 n_pe_c += 1
         meta = {
             "crop_family": family,
+            **surface_site_metadata(elems, coords, center_idx),
             "center_atom_role": extra.get("center_atom_role", "") if extra else "",
             "parent_backbone_atom_id": extra.get("parent_backbone_atom_id", "") if extra else "",
             "nearest_silica_atom_id": "" if nearest_silica < 0 else nearest_silica + 1,

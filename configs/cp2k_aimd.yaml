@@ -78,6 +78,14 @@ cp2k_crop:
   main_crop_radius_A: 8.0
   require_full_pore_source: true
   patches_per_family_per_system: 3
+  balanced_family_min_counts:
+    PE_HDPE_CH2_silanol_contact: 3
+    PP_methyl_silanol_contact: 1
+    PP_methyl_siloxane_contact: 1
+    PP_backbone_CH_silanol_contact: 1
+    PE_PP_mixed_near_wall: 3
+    crowded_polymer_wall_contact: 2
+    silica_only_wall_baseline: 2
   require_snapshot_manifest: true
 reuse_lmp_proj:
   enabled: true
