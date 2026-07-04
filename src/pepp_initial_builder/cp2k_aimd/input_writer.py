@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Sequence, Tuple
 
@@ -59,6 +60,8 @@ def select_short_aimd_from_successful_sp(config: Dict[str, Any]) -> Path:
         chosen = [row for row in parsed if row.get("family") == family][:2]
         for row in chosen:
             local = local_by_id.get(row.get("aimd_structure_id", ""), {})
+            detected_out = row.get("detected_cp2k_out", "")
+            source_sp_job_dir = row.get("source_job_dir") or row.get("job_dir") or (str(Path(detected_out).parent) if detected_out else "")
             rows.append(
                 {
                     **local,
@@ -68,7 +71,7 @@ def select_short_aimd_from_successful_sp(config: Dict[str, Any]) -> Path:
                     "status": "selected_for_short_aimd",
                     "source_sp_status": row.get("status", ""),
                     "source_sp_frames_extxyz_path": row.get("frames_extxyz_path", ""),
-                    "source_sp_job_dir": row.get("source_job_dir", row.get("job_dir", "")),
+                    "source_sp_job_dir": source_sp_job_dir,
                     "requested_label_mode": "short_aimd",
                     "extxyz_path": local.get("extxyz_path", ""),
                 }
@@ -112,13 +115,31 @@ def valence_electron_count(elems: Sequence[str]) -> int:
     return sum(valence.get(elem, 0) for elem in elems)
 
 
-def input_text(aimd_id: str, label_mode: str, box: Tuple[float, float, float], config: Dict[str, Any], mode: str, elems: Sequence[str] | None = None) -> str:
+def input_text(
+    aimd_id: str,
+    label_mode: str,
+    box: Tuple[float, float, float],
+    config: Dict[str, Any],
+    mode: str,
+    elems: Sequence[str] | None = None,
+    wfn_restart: bool = False,
+) -> str:
     cp2k = config["cp2k"]
     run_type = "ENERGY_FORCE" if label_mode == "sp_force" else "MD"
     electron_count = valence_electron_count(elems or [])
     odd_electrons = bool(elems) and electron_count % 2 == 1
     multiplicity = 2 if odd_electrons else int(cp2k.get("multiplicity", 1))
     uks_line = "    UKS TRUE\n" if odd_electrons else ""
+    wfn_restart_line = "    WFN_RESTART_FILE_NAME restart.wfn\n" if wfn_restart else ""
+    scf_guess_line = "      SCF_GUESS RESTART\n" if wfn_restart else ""
+    scf_eps = float(cp2k["eps_scf"])
+    scf_max = int(cp2k["max_scf"])
+    outer_scf_max = int(cp2k.get("outer_scf_max", 20))
+    if label_mode == "short_aimd":
+        md_cfg = config.get("label_modes", {}).get("short_nvt_aimd", {})
+        scf_eps = float(md_cfg.get("eps_scf", scf_eps))
+        scf_max = int(md_cfg.get("max_scf", scf_max))
+        outer_scf_max = int(md_cfg.get("outer_scf_max", outer_scf_max))
     if str(cp2k.get("scf_solver", "DIAGONALIZATION")).upper() == "OT":
         scf_solver_block = f"""      &OT
         PRECONDITIONER {cp2k.get('ot_preconditioner', 'FULL_SINGLE_INVERSE')}
@@ -127,8 +148,8 @@ def input_text(aimd_id: str, label_mode: str, box: Tuple[float, float, float], c
         ENERGY_GAP {float(cp2k.get('ot_energy_gap', 0.001)):.6f}
       &END OT
       &OUTER_SCF
-        MAX_SCF {int(cp2k.get('outer_scf_max', 20))}
-        EPS_SCF {float(cp2k['eps_scf']):.3e}
+        MAX_SCF {outer_scf_max}
+        EPS_SCF {scf_eps:.3e}
       &END OUTER_SCF"""
     else:
         scf_solver_block = f"""      ADDED_MOS {int(cp2k.get('added_mos', 0))}
@@ -190,6 +211,7 @@ def input_text(aimd_id: str, label_mode: str, box: Tuple[float, float, float], c
   &DFT
     BASIS_SET_FILE_NAME {cp2k['basis_set_file']}
     POTENTIAL_FILE_NAME {cp2k['potential_file']}
+{wfn_restart_line.rstrip()}
     CHARGE {int(cp2k.get('charge', 0))}
     MULTIPLICITY {multiplicity}
 {uks_line.rstrip()}
@@ -198,8 +220,9 @@ def input_text(aimd_id: str, label_mode: str, box: Tuple[float, float, float], c
       REL_CUTOFF {float(cp2k['rel_cutoff_Ry']):.1f}
     &END MGRID
     &SCF
-      MAX_SCF {int(cp2k['max_scf'])}
-      EPS_SCF {float(cp2k['eps_scf']):.3e}
+      MAX_SCF {scf_max if label_mode == "short_aimd" else int(cp2k['max_scf'])}
+      EPS_SCF {(scf_eps if label_mode == "short_aimd" else float(cp2k['eps_scf'])):.3e}
+{scf_guess_line.rstrip()}
 {scf_solver_block}
     &END SCF
     &XC
@@ -245,10 +268,17 @@ def write_cp2k_label_inputs(config: Dict[str, Any], mode: str = "main") -> Path:
             job_dir = p(config, "cp2k_jobs_dir") / aimd_id / label_mode
             job_dir.mkdir(parents=True, exist_ok=True)
             project = f"{aimd_id}_{label_mode}"
+            wfn_restart = False
+            if label_mode == "short_aimd" and row.get("source_sp_job_dir"):
+                source_sp_dir = Path(str(row["source_sp_job_dir"]))
+                wfn_candidates = sorted(source_sp_dir.glob("*-RESTART.wfn"), key=lambda path: path.stat().st_mtime if path.exists() else 0, reverse=True)
+                if wfn_candidates:
+                    shutil.copyfile(wfn_candidates[0], job_dir / "restart.wfn")
+                    wfn_restart = True
             coords_xyz(job_dir / "coords.xyz", elems, coords)
             coords_inc(job_dir / "coords.inc", elems, coords)
             (job_dir / "cell.inc").write_text(cell_inc(box), encoding="utf-8")
-            (job_dir / "input.inp").write_text(input_text(aimd_id, label_mode, box, config, mode, elems), encoding="utf-8")
+            (job_dir / "input.inp").write_text(input_text(aimd_id, label_mode, box, config, mode, elems, wfn_restart), encoding="utf-8")
             metadata = {
                 "aimd_structure_id": aimd_id,
                 "family": family,
@@ -263,6 +293,7 @@ def write_cp2k_label_inputs(config: Dict[str, Any], mode: str = "main") -> Path:
                 "pe_variant": row.get("pe_variant", ""),
                 "pp_variant": row.get("pp_variant", ""),
                 "cp2k_run_performed": False,
+                "wfn_restart_from_sp": wfn_restart,
             }
             (job_dir / "job_metadata.yaml").write_text(yaml.safe_dump(metadata, sort_keys=False), encoding="utf-8")
             (job_dir / "run_status.json").write_text(json.dumps({"status": "input_written_not_submitted", "cp2k_out": str(job_dir / "cp2k.out")}, indent=2) + "\n", encoding="utf-8")

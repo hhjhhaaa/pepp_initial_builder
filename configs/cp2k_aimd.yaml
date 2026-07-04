@@ -135,6 +135,9 @@ label_modes:
     steps_tiny: 100
     steps_main: 2000
     frame_stride: 20
+    eps_scf: 1.0e-4
+    max_scf: 100
+    outer_scf_max: 5
 hpc:
   scheduler: slurm
   cp2k_module_placeholder: "cp2k-2024.1"
