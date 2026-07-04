@@ -138,6 +138,8 @@ label_modes:
     eps_scf: 1.0e-4
     max_scf: 100
     outer_scf_max: 5
+    thermostat_type: CSVR
+    thermostat_timecon_fs: 100.0
 hpc:
   scheduler: slurm
   cp2k_module_placeholder: "cp2k-2024.1"

@@ -115,6 +115,24 @@ def valence_electron_count(elems: Sequence[str]) -> int:
     return sum(valence.get(elem, 0) for elem in elems)
 
 
+def md_thermostat_block(md: Dict[str, Any]) -> str:
+    ensemble = str(md.get("ensemble", "NVT")).upper()
+    thermostat_type = str(md.get("thermostat_type", "CSVR")).upper()
+    if ensemble == "NVE" or thermostat_type in {"", "NONE", "FALSE"}:
+        return ""
+    timecon = float(md.get("thermostat_timecon_fs", 100.0))
+    if thermostat_type == "CSVR":
+        return f"""    &THERMOSTAT
+      TYPE CSVR
+      &CSVR
+        TIMECON {timecon:.6f}
+      &END CSVR
+    &END THERMOSTAT"""
+    return f"""    &THERMOSTAT
+      TYPE {thermostat_type}
+    &END THERMOSTAT"""
+
+
 def input_text(
     aimd_id: str,
     label_mode: str,
@@ -172,12 +190,14 @@ def input_text(
         md = config["label_modes"]["short_nvt_aimd"]
         steps = int(md.get(f"steps_{mode}", md.get("steps_main", 2000)))
         frame_stride = int(md.get("frame_stride", 20))
+        thermostat = md_thermostat_block(md)
         motion = f"""&MOTION
   &MD
     ENSEMBLE {md.get("ensemble", "NVT")}
     STEPS {steps}
     TIMESTEP {float(md.get("timestep_fs", 0.5))}
     TEMPERATURE {float(cp2k.get("temperatures_K", [523.0])[0])}
+{thermostat}
   &END MD
   &PRINT
     &TRAJECTORY

@@ -59,7 +59,15 @@ def _cfg(tmp_path: Path) -> dict:
             "temperatures_K": [523.0],
         },
         "label_modes": {
-            "short_nvt_aimd": {"ensemble": "NVT", "timestep_fs": 0.5, "steps_tiny": 100, "steps_main": 2000, "frame_stride": 20}
+            "short_nvt_aimd": {
+                "ensemble": "NVT",
+                "timestep_fs": 0.5,
+                "steps_tiny": 100,
+                "steps_main": 2000,
+                "frame_stride": 20,
+                "thermostat_type": "CSVR",
+                "thermostat_timecon_fs": 100.0,
+            }
         },
         "hpc": {
             "cp2k_module_placeholder": "__SET_CP2K_MODULE_ON_HPC__",
@@ -143,6 +151,10 @@ def test_cp2k_inputs_slurm_and_no_output_status(tmp_path):
     text_b = (tmp_path / "data/cp2k_aimd/jobs/aimd_b/short_aimd/input.inp").read_text(encoding="utf-8")
     assert "RUN_TYPE MD" in text_b
     assert "&MOTION" in text_b
+    assert "&THERMOSTAT" in text_b
+    assert "TYPE CSVR" in text_b
+    assert "&CSVR" in text_b
+    assert "TIMECON 100.000000" in text_b
     assert "FILENAME pos" in text_b
     assert "FILENAME frc" in text_b
 
