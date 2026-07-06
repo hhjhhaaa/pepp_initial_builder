@@ -32,6 +32,7 @@ prod.lammpstrj
 
 # Generated data and structure folders
 data/
+data_backup_minloop_/
 data/systems/*/
 data/polymer/systems/*/
 data/pore/porems_models/*/
@@ -49,7 +50,11 @@ data/cp2k_parsed/*/
 data/mlff_models/*/
 data/porems_models/*/
 data/silica_patches/*/
+outputs/runs/
 outputs/logs/*
 !outputs/logs/*report*.txt
 !outputs/logs/*report*.json
 !outputs/logs/*validation*.csv
+
+# Scheduler logs
+slurm-*.out
