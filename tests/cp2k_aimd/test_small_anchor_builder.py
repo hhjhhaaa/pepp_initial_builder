@@ -1,10 +1,10 @@
 from pathlib import Path
 
 import pandas as pd
+import pytest
 import yaml
 
 from pepp_initial_builder.cp2k_aimd.dataset_builder import build_aimd_dataset
-from pepp_initial_builder.cp2k_aimd.input_writer import write_cp2k_label_inputs
 from pepp_initial_builder.cp2k_aimd.small_anchor_builder import build_small_anchor_structures
 
 
@@ -66,7 +66,7 @@ def _cfg(tmp_path: Path) -> dict:
             "min_frames_for_training": 2,
             "train_fraction": 0.8,
             "val_fraction": 0.1,
-            "accepted_source_stages": ["designed_small_interface_anchor"],
+            "accepted_source_stages": ["lammps_relaxed_full_pore"],
         },
         "units": {
             "output_energy": "eV",
@@ -77,41 +77,18 @@ def _cfg(tmp_path: Path) -> dict:
     }
 
 
-def test_small_anchor_structures_feed_cp2k_inputs(tmp_path):
+def test_small_anchor_structures_disabled_for_production_by_default(tmp_path):
     cfg = _cfg(tmp_path)
-    manifest = build_small_anchor_structures(cfg, "tiny")
-    rows = pd.read_csv(manifest)
 
-    assert len(rows) == 13
-    assert set(rows["source_stage"]) == {"designed_small_interface_anchor"}
-    assert set(rows["status"]) == {"available"}
-    assert rows["n_atoms"].max() < 120
-    assert {"PC", "PE_PC", "PP_PC", "PE_PP_PC"}.issubset(set(rows["polymer_architecture"]))
-    assert "PC_carbonate_silanol_contact" in set(rows["family"])
-    assert "PC_phenyl_siloxane_contact" in set(rows["family"])
-    assert {"nearest_site_type", "n_silanol_OH_within_5A", "n_siloxane_O_within_5A"}.issubset(rows.columns)
-    for path in rows["extxyz_path"]:
-        text = Path(path).read_text(encoding="utf-8")
-        assert "energy=" not in text
-        assert "forces" not in text.lower()
-        assert 'Lattice="18.0 0 0 0 18.0 0 0 0 18.0"' in text
-
-    input_manifest = write_cp2k_label_inputs(cfg, "tiny")
-    input_rows = pd.read_csv(input_manifest)
-    assert len(input_rows) == 13
-    assert set(input_rows["label_mode"]) == {"sp_force"}
-    first_input = Path(input_rows.iloc[0]["input_inp_path"]).read_text(encoding="utf-8")
-    assert "RUN_TYPE ENERGY_FORCE" in first_input
-    assert "&CELL" in first_input
-    for element in ["C", "H", "O", "Si"]:
-        assert f"&KIND {element}" in first_input
+    with pytest.raises(RuntimeError, match="Hand-built small-anchor structures are disabled"):
+        build_small_anchor_structures(cfg, "tiny")
 
 
-def _write_labeled_extxyz(path: Path, family: str) -> None:
+def _write_labeled_extxyz(path: Path, family: str, source_stage: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         '4\nLattice="10 0 0 0 10 0 0 0 10" Properties=species:S:1:pos:R:3:forces:R:3 '
-        f'energy=-10.0 source_stage=designed_small_interface_anchor family={family} pbc="T T T"\n'
+        f'energy=-10.0 source_stage={source_stage} family={family} pbc="T T T"\n'
         "Si 0 0 0 0.0 0.0 0.0\n"
         "O 1.6 0 0 0.1 0.0 0.0\n"
         "C 3.0 0 0 -0.1 0.0 0.0\n"
@@ -120,13 +97,13 @@ def _write_labeled_extxyz(path: Path, family: str) -> None:
     )
 
 
-def test_dataset_builder_accepts_configured_small_anchor_source(tmp_path):
+def test_dataset_builder_rejects_handbuilt_small_anchor_source_by_default(tmp_path):
     cfg = _cfg(tmp_path)
     parsed_dir = tmp_path / "data/cp2k_aimd/parsed"
     a = parsed_dir / "a/sp_force/frames.extxyz"
     b = parsed_dir / "b/sp_force/frames.extxyz"
-    _write_labeled_extxyz(a, "PE_short_CH2_silanol_contact")
-    _write_labeled_extxyz(b, "PP_methyl_silanol_contact")
+    _write_labeled_extxyz(a, "PE_short_CH2_silanol_contact", "lammps_relaxed_full_pore")
+    _write_labeled_extxyz(b, "PP_methyl_silanol_contact", "designed_small_interface_anchor")
     pd.DataFrame(
         [
             {
@@ -135,7 +112,7 @@ def test_dataset_builder_accepts_configured_small_anchor_source(tmp_path):
                 "crop_family": "PE_short_CH2_silanol_contact",
                 "label_mode": "sp_force",
                 "cp2k_run_type": "ENERGY_FORCE",
-                "source_stage": "designed_small_interface_anchor",
+                "source_stage": "lammps_relaxed_full_pore",
                 "polymer_architecture": "PE",
                 "status": "parsed_real_cp2k_output",
                 "usable_frame_count": 1,
@@ -158,7 +135,8 @@ def test_dataset_builder_accepts_configured_small_anchor_source(tmp_path):
 
     build_aimd_dataset(cfg)
     summary = yaml.safe_load((tmp_path / "data/aimd_dataset/dataset_summary.yaml").read_text(encoding="utf-8"))
-    assert summary["dataset_status"] == "ready"
-    assert summary["num_frames_from_accepted_source_stages"] == 2
-    assert summary["num_frames_from_rejected_source_stages"] == 0
-    assert summary["num_frames_from_lammps_relaxed_full_pore"] == 0
+    assert summary["dataset_status"] == "failed_rejected_source_stage_detected"
+    assert summary["usable_for_mlff_training"] is False
+    assert summary["num_frames_from_accepted_source_stages"] == 1
+    assert summary["num_frames_from_rejected_source_stages"] == 1
+    assert summary["num_frames_from_lammps_relaxed_full_pore"] == 1

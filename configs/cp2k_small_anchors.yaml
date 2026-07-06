@@ -34,6 +34,7 @@ dataset_scope:
   allow_only_real_cp2k_outputs: true
   forbid_fake_energy_forces: true
 small_anchor_structures:
+  allow_handbuilt_debug: false
   source_stage: designed_small_interface_anchor
   anchor_design: small_crystalline_face_short_repeat_unit
   cell_abc_A: [18.0, 18.0, 18.0]
@@ -101,7 +102,7 @@ dataset:
   dataset_id: pepppc_silica_small_anchor_cp2k
   output_format: extxyz
   split_strategy: family_blocked
-  accepted_source_stages: [designed_small_interface_anchor]
+  accepted_source_stages: [lammps_relaxed_full_pore]
   train_fraction: 0.8
   val_fraction: 0.1
   test_fraction: 0.1

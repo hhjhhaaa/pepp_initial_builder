@@ -194,6 +194,14 @@ def _anchor_specs(config: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 def build_small_anchor_structures(config: Dict[str, Any], mode: str = "tiny") -> Path:
+    if not bool(config.get("small_anchor_structures", {}).get("allow_handbuilt_debug", False)):
+        raise RuntimeError(
+            "Hand-built small-anchor structures are disabled for production. "
+            "Generate polymer chains with EMC, build/crop from a real SiO2 pore or patch, "
+            "relax the packed full-pore structure, then use cp2k_aimd.seed_patch_builder. "
+            "Set small_anchor_structures.allow_handbuilt_debug=true only for non-production "
+            "debugging; those structures must not be used as CP2K production labels."
+        )
     ensure_dirs(config)
     outbase = p(config, "aimd_local_structures_dir")
     outbase.mkdir(parents=True, exist_ok=True)
