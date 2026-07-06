@@ -37,6 +37,9 @@ def build_aimd_dataset(config: Dict[str, Any]) -> Path:
     source_counts = _count_by("source_stage")
     relaxed_count = source_counts.get("lammps_relaxed_full_pore", 0)
     non_relaxed_count = total - relaxed_count
+    accepted_source_stages = list(config.get("dataset", {}).get("accepted_source_stages", ["lammps_relaxed_full_pore"]))
+    accepted_source_count = sum(source_counts.get(stage, 0) for stage in accepted_source_stages)
+    rejected_source_count = total - accepted_source_count
     common_summary = {
         "num_sp_frames": num_sp,
         "num_aimd_frames": num_aimd,
@@ -45,14 +48,17 @@ def build_aimd_dataset(config: Dict[str, Any]) -> Path:
         "num_frames_by_source_stage": source_counts,
         "num_frames_from_lammps_relaxed_full_pore": relaxed_count,
         "num_frames_from_non_relaxed_source": non_relaxed_count,
+        "accepted_source_stages": accepted_source_stages,
+        "num_frames_from_accepted_source_stages": accepted_source_count,
+        "num_frames_from_rejected_source_stages": rejected_source_count,
         "num_failed_cp2k_jobs": len(failed),
         "failure_reason_counts": failure_reason_counts,
     }
     rows = [{"split": split, "extxyz_path": "", "frame_count": 0} for split in ["train", "val", "test"]]
     if total < min_frames:
         summary = {"dataset_status": "insufficient_real_cp2k_frames", "usable_for_mlff_training": False, "failure_reason": f"real frames < {min_frames}", **common_summary}
-    elif non_relaxed_count != 0:
-        summary = {"dataset_status": "failed_non_relaxed_source_detected", "usable_for_mlff_training": False, "failure_reason": "accepted frames include non-lammps_relaxed_full_pore source", **common_summary}
+    elif rejected_source_count != 0:
+        summary = {"dataset_status": "failed_rejected_source_stage_detected", "usable_for_mlff_training": False, "failure_reason": "accepted frames include source_stage outside accepted_source_stages", **common_summary}
     else:
         block_keys = list(dict.fromkeys("|".join([str(row.get("family", "")), str(row.get("patch_id", "")), str(row.get("aimd_structure_id", ""))]) for row in real))
         split_for = {}

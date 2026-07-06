@@ -1,0 +1,119 @@
+paths:
+  root: .
+  bulk_initial_manifest: data/exports/polymer_initial_manifest.csv
+  porems_models_dir: data/mesoporous_silica/pore_models
+  silica_patches_dir: data/mesoporous_silica/surface_patches
+  surface_sites_dir: data/mesoporous_silica/surface_sites
+  aimd_local_structures_dir: data/cp2k_aimd/seed_structures
+  full_pore_seed_structures_dir: data/mlff_seed/structures
+  aimd_exports_dir: data/exports
+  aimd_seed_manifest: data/exports/aimd_seed_manifest.csv
+  aimd_structure_manifest: data/exports/all_data_generation_manifest.csv
+  aimd_local_manifest: data/cp2k_aimd/seed_structures/aimd_local_manifest.csv
+  cp2k_structure_input_manifest: data/exports/cp2k_structure_input_manifest.csv
+  cp2k_jobs_dir: data/cp2k_aimd/jobs
+  cp2k_parsed_dir: data/cp2k_aimd/parsed
+  aimd_dataset_dir: data/aimd_dataset
+  exports_dir: data/exports
+  logs_dir: outputs/logs
+  jobs_dir: outputs/jobs
+  figures_dir: outputs/figures
+  lmp_proj_root: ~/lmp-proj
+run:
+  run_id: pilot_20260705_small_interface_anchors
+  clean_start: true
+  forbid_reuse_existing_tiny_outputs: true
+tools:
+  ase_required: true
+  cp2k_not_required_here: false
+  mlff_not_required_here: true
+dataset_scope:
+  elements: [C, H, O, Si]
+  forbid_metals: true
+  forbid_ru: true
+  allow_only_real_cp2k_outputs: true
+  forbid_fake_energy_forces: true
+small_anchor_structures:
+  source_stage: designed_small_interface_anchor
+  anchor_design: small_crystalline_face_short_repeat_unit
+  cell_abc_A: [18.0, 18.0, 18.0]
+  min_polymer_surface_distance_A: 1.7
+  tiny_max_structures: 8
+  pilot_max_structures: 12
+  main_max_structures: 24
+cp2k:
+  project_prefix: pepp_chosi_small_anchor
+  method: PBE_D3_BJ
+  run_types: [ENERGY_FORCE, MD]
+  xc_functional: PBE
+  dispersion: D3_BJ
+  basis_set_file: BASIS_MOLOPT
+  potential_file: GTH_POTENTIALS
+  dftd3_file: dftd3.dat
+  basis_set: DZVP-MOLOPT-SR-GTH
+  potential: GTH-PBE
+  periodic: XYZ
+  charge: 0
+  multiplicity: 1
+  cutoff_Ry: 400
+  rel_cutoff_Ry: 50
+  eps_scf: 1.0e-5
+  max_scf: 2000
+  scf_solver: OT
+  outer_scf_max: 20
+  ot_preconditioner: FULL_ALL
+  ot_minimizer: DIIS
+  ot_stepsize: 0.08
+  ot_energy_gap: 0.001
+  scf_mixing: BROYDEN_MIXING
+  added_mos: 100
+  electronic_smearing_K: 300
+  temperatures_K: [523.0]
+label_modes:
+  single_point_force:
+    cp2k_run_type: ENERGY_FORCE
+  short_nvt_aimd:
+    cp2k_run_type: MD
+    ensemble: NVT
+    timestep_fs: 0.25
+    steps_tiny: 80
+    steps_main: 200
+    frame_stride: 5
+    eps_scf: 1.0e-4
+    max_scf: 100
+    outer_scf_max: 5
+    thermostat_type: CSVR
+    thermostat_timecon_fs: 30.0
+hpc:
+  scheduler: slurm
+  cp2k_module_placeholder: "cp2k-2024.1"
+  cp2k_command_default: cp2k.psmp
+  account:
+  partition: batch
+  nodes: 1
+  ntasks_per_node: 32
+  cpus_per_task: 1
+  time_sp:
+  time_aimd:
+  sp_array_throttle: 8
+  aimd_array_throttle: 4
+dataset:
+  dataset_id: pepp_silica_small_anchor_cp2k
+  output_format: extxyz
+  split_strategy: family_blocked
+  accepted_source_stages: [designed_small_interface_anchor]
+  train_fraction: 0.8
+  val_fraction: 0.1
+  test_fraction: 0.1
+  require_energy: true
+  require_forces: true
+  optional_stress: true
+  min_frames_for_training: 8
+  tiny_max_structures: 8
+  pilot_max_structures: 12
+  main_max_structures: 24
+units:
+  output_energy: eV
+  output_forces: eV_per_A
+  cp2k_energy_hartree_to_eV: 27.211386245988
+  cp2k_force_hartree_per_bohr_to_eV_per_A: 51.422067476

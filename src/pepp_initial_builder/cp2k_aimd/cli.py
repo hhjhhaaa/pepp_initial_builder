@@ -10,6 +10,7 @@ from pepp_initial_builder.cp2k_aimd.input_writer import select_short_aimd_from_s
 from pepp_initial_builder.cp2k_aimd.manifest import export_aimd_dataset_manifest
 from pepp_initial_builder.cp2k_aimd.parser import parse_cp2k_outputs
 from pepp_initial_builder.cp2k_aimd.seed_patch_builder import build_aimd_local_structures
+from pepp_initial_builder.cp2k_aimd.small_anchor_builder import build_small_anchor_structures
 from pepp_initial_builder.cp2k_aimd.validation import validate_aimd_dataset
 from pepp_initial_builder.pore.config import load_pore_config
 from pepp_initial_builder.reuse.lmp_proj_discovery import discover_lmp_proj_modules
@@ -27,6 +28,11 @@ def discover_lmp_proj_reuse_main(argv: Sequence[str] | None = None) -> None:
 def build_seed_structures_main(argv: Sequence[str] | None = None) -> None:
     args = _parser().parse_args(argv)
     print(build_aimd_local_structures(load_pore_config(config_path(args.config)), mode_from_args(args)))
+
+
+def build_small_anchors_main(argv: Sequence[str] | None = None) -> None:
+    args = _parser().parse_args(argv)
+    print(build_small_anchor_structures(load_cp2k_config(config_path(args.config)), mode_from_args(args)))
 
 
 def write_cp2k_inputs_main(argv: Sequence[str] | None = None) -> None:
