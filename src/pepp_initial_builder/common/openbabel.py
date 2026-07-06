@@ -21,16 +21,31 @@ def convert_with_obabel(input_path: str | Path, output_path: str | Path, configu
     src = Path(input_path)
     dst = Path(output_path)
     dst.parent.mkdir(parents=True, exist_ok=True)
-    cmd = [exe]
-    if src.suffix.lower() == ".pdb":
-        cmd.extend(["-ipdb", str(src), "-ab"])
-    else:
-        cmd.append(str(src))
-    cmd.extend(["-O", str(dst)])
+    input_format = _obabel_format(src)
+    output_format = _obabel_format(dst)
+    cmd = [exe, f"-i{input_format}", str(src), f"-o{output_format}", "-O", str(dst)]
+    if input_format == "pdb":
+        cmd.append("-ab")
     proc = subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False)
     if proc.returncode != 0 or not dst.exists():
         raise RuntimeError(f"Open Babel conversion failed for {src}: {proc.stdout.strip()}")
     return dst
+
+
+def _obabel_format(path: Path) -> str:
+    suffixes = [item.lower() for item in path.suffixes]
+    if suffixes[-2:] == [".pdb", ".gz"]:
+        return "pdb"
+    suffix = suffixes[-1] if suffixes else ""
+    formats = {
+        ".pdb": "pdb",
+        ".xyz": "xyz",
+        ".extxyz": "exyz",
+    }
+    try:
+        return formats[suffix]
+    except KeyError as exc:
+        raise ValueError(f"Unsupported Open Babel format for {path}") from exc
 
 
 def pdb_coords_via_obabel(path: str | Path, configured: object = None) -> List[List[float]]:
