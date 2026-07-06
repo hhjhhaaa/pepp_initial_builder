@@ -1,6 +1,5 @@
 paths:
   root: .
-  bulk_initial_manifest: data/exports/polymer_initial_manifest.csv
   porems_models_dir: data/mesoporous_silica/pore_models
   silica_patches_dir: data/mesoporous_silica/surface_patches
   surface_sites_dir: data/mesoporous_silica/surface_sites
@@ -18,12 +17,14 @@ paths:
   logs_dir: outputs/logs
   jobs_dir: outputs/jobs
   figures_dir: outputs/figures
-  lmp_proj_root: ~/lmp-proj
 run:
-  run_id: pilot_20260705_small_interface_anchors
+  run_id: pilot_20260706_closed_small_ps_anchors
   clean_start: true
-  forbid_reuse_existing_tiny_outputs: true
 tools:
+  porems_search_roots: [., ~/software, ~]
+  porems_path_hint:
+  known_emc_root: ~/software/EMC
+  known_openbabel_executable: /public/home/jinhao.hu/.conda/envs/peppmixure/bin/obabel
   ase_required: true
   cp2k_not_required_here: false
   mlff_not_required_here: true
@@ -33,17 +34,44 @@ dataset_scope:
   forbid_ru: true
   allow_only_real_cp2k_outputs: true
   forbid_fake_energy_forces: true
-small_anchor_structures:
-  allow_handbuilt_debug: false
-  source_stage: designed_small_interface_anchor
-  anchor_design: small_crystalline_face_short_repeat_unit
-  cell_abc_A: [18.0, 18.0, 18.0]
-  min_polymer_surface_distance_A: 1.7
-  tiny_max_structures: 13
-  pilot_max_structures: 18
-  main_max_structures: 36
+porems:
+  enabled: true
+  model_type: silica_pore
+  pore_shape: cylindrical
+  surface: hydroxylated_silica
+  require_explicit_surface_H: true
+  require_no_dangling_bonds: true
+  pore_diameter_nm_candidates: [4.0]
+  pore_length_nm_candidates: [4.0]
+  hydroxylation_modes: [silanol_rich]
+  max_pore_models_tiny: 1
+  max_pore_models_pilot: 1
+  max_pore_models_main: 1
+silica_patch:
+  rebuild_local_cell: true
+  vacuum_buffer_A: 6.0
+  min_surface_oh_count_for_silanol_rich: 2
+mlff_assumptions:
+  planned_mlff_cutoff_A: 5.0
+  min_cell_multiple_of_cutoff: 2.0
+  min_cell_length_A: 24.0
+closed_small_anchors:
+  patch_radius_A: 7.5
+  max_silica_atoms_before_capping: 90
+  cell_margin_A: 8.0
+  emc_chain_length_backbone: 32
+  tiny_max_structures: 9
+  pilot_max_structures: 9
+  main_max_structures: 9
+emc:
+  enabled: true
+  force_field: pcff
+  attempt_timeout_seconds: 300
+  build_timeout_seconds: 900
+density:
+  initial_packing_density_g_cm3: 0.85
 cp2k:
-  project_prefix: pepppc_chosi_small_anchor
+  project_prefix: peppps_chosi_closed_small_anchor
   method: PBE_D3_BJ
   run_types: [ENERGY_FORCE, MD]
   xc_functional: PBE
@@ -56,8 +84,8 @@ cp2k:
   periodic: XYZ
   charge: 0
   multiplicity: 1
-  cutoff_Ry: 400
-  rel_cutoff_Ry: 50
+  cutoff_Ry: 450
+  rel_cutoff_Ry: 60
   eps_scf: 1.0e-5
   max_scf: 2000
   scf_solver: OT
@@ -77,7 +105,7 @@ label_modes:
     cp2k_run_type: MD
     ensemble: NVT
     timestep_fs: 0.25
-    steps_tiny: 80
+    steps_tiny: 100
     steps_main: 200
     frame_stride: 5
     eps_scf: 1.0e-4
@@ -99,20 +127,20 @@ hpc:
   sp_array_throttle: 8
   aimd_array_throttle: 4
 dataset:
-  dataset_id: pepppc_silica_small_anchor_cp2k
+  dataset_id: peppps_silica_closed_small_anchor_cp2k
   output_format: extxyz
   split_strategy: family_blocked
-  accepted_source_stages: [lammps_relaxed_full_pore]
+  accepted_source_stages: [closed_hydrogen_capped_small_anchor]
   train_fraction: 0.8
   val_fraction: 0.1
   test_fraction: 0.1
   require_energy: true
   require_forces: true
   optional_stress: true
-  min_frames_for_training: 12
-  tiny_max_structures: 13
-  pilot_max_structures: 18
-  main_max_structures: 36
+  min_frames_for_training: 9
+  tiny_max_structures: 9
+  pilot_max_structures: 9
+  main_max_structures: 9
 units:
   output_energy: eV
   output_forces: eV_per_A
