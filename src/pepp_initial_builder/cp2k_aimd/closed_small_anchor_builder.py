@@ -141,15 +141,22 @@ def _cap_silica(elems_in: Sequence[str], coords_in: np.ndarray) -> Tuple[List[st
         base = _unit(-(np.sum(existing_dirs, axis=0) if existing_dirs else coords[si] - centroid), coords[si] - centroid)
         candidates = [base] + [_unit(base + 0.45 * t) for t in tetra] + [_unit(t) for t in tetra]
         used = 0
+        pending_heavy: List[np.ndarray] = []
         for cand in candidates:
             if used >= missing:
                 break
             o_pos = coords[si] + 1.62 * cand
-            if len(coords) and float(np.min(np.linalg.norm(coords - o_pos, axis=1))) < 0.75:
+            other_heavy = [
+                coords[i]
+                for i, other in enumerate(elems)
+                if other != "H" and i != si
+            ] + pending_heavy
+            if other_heavy and float(np.min(np.linalg.norm(np.array(other_heavy) - o_pos, axis=1))) < 1.45:
                 continue
             h_pos = o_pos + 0.96 * cand
             new_elems.extend(["O", "H"])
             new_coords.extend([o_pos, h_pos])
+            pending_heavy.append(o_pos)
             added_oh += 1
             used += 1
 
@@ -263,11 +270,12 @@ def _place_fragments(silica_elems: Sequence[str], silica_coords: np.ndarray, fra
         coords = np.vstack([coords, placed])
     min_poly_silica = min_cross_distance(elems, coords, polymer_start) if fragments else float("inf")
     min_all = _min_all_distance(elems, coords)
+    min_heavy = _min_heavy_heavy_distance(elems, coords)
     mins = coords.min(axis=0)
     coords = coords - mins + 7.0
     extent = coords.max(axis=0) + 7.0
     box = tuple(float(max(float(box[i]), extent[i])) for i in range(3))
-    return elems, coords, box, {"min_polymer_silica_distance_A": f"{min_poly_silica:.3f}", "min_all_pair_distance_A": f"{min_all:.3f}"}
+    return elems, coords, box, {"min_polymer_silica_distance_A": f"{min_poly_silica:.3f}", "min_all_pair_distance_A": f"{min_all:.3f}", "min_heavy_heavy_distance_A": f"{min_heavy:.3f}"}
 
 
 def min_cross_distance(elems: Sequence[str], coords: np.ndarray, split: int) -> float:
@@ -312,6 +320,15 @@ def _min_all_distance(elems: Sequence[str], coords: np.ndarray) -> float:
         for j in range(i + 1, len(elems)):
             if elems[i] == "H" and elems[j] == "H":
                 continue
+            value = min(value, float(np.linalg.norm(coords[i] - coords[j])))
+    return value
+
+
+def _min_heavy_heavy_distance(elems: Sequence[str], coords: np.ndarray) -> float:
+    heavy = [i for i, elem in enumerate(elems) if elem != "H"]
+    value = float("inf")
+    for left, i in enumerate(heavy):
+        for j in heavy[left + 1 :]:
             value = min(value, float(np.linalg.norm(coords[i] - coords[j])))
     return value
 
@@ -394,7 +411,7 @@ def build_closed_small_anchors(config: Dict[str, Any], mode: str = "tiny") -> Pa
         extxyz_path = structure_dir / "structure.extxyz"
         _write_extxyz(extxyz_path, elems, coords, local_box, metadata)
         contact_ok = not names or float(geom_meta["min_polymer_silica_distance_A"]) <= 3.6
-        status = "available" if contact_ok and silica_meta["undercoordinated_Si_after_capping"] == 0 and silica_meta["uncapped_O_after_capping"] == 0 and float(geom_meta["min_all_pair_distance_A"]) >= 0.65 else "failed_geometry_or_capping_gate"
+        status = "available" if contact_ok and silica_meta["undercoordinated_Si_after_capping"] == 0 and silica_meta["uncapped_O_after_capping"] == 0 and float(geom_meta["min_all_pair_distance_A"]) >= 0.65 and float(geom_meta["min_heavy_heavy_distance_A"]) >= 1.35 else "failed_geometry_or_capping_gate"
         row = {
             "aimd_structure_id": anchor_id,
             "status": status,
