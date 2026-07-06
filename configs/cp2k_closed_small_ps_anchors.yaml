@@ -86,10 +86,10 @@ cp2k:
   multiplicity: 1
   cutoff_Ry: 400
   rel_cutoff_Ry: 50
-  eps_scf: 1.0e-5
-  max_scf: 800
+  eps_scf: 1.0e-4
+  max_scf: 300
   scf_solver: OT
-  outer_scf_max: 12
+  outer_scf_max: 8
   ot_preconditioner: FULL_SINGLE_INVERSE
   ot_minimizer: DIIS
   ot_stepsize: 0.08
