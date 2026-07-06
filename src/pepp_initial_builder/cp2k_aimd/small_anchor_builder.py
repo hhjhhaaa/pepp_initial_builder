@@ -100,6 +100,42 @@ def _pp_fragment(n_repeat: int = 3) -> List[Atom]:
     return atoms
 
 
+def _phenyl_ring(cx: float, cy: float, cz: float, radius: float = 1.40) -> List[Atom]:
+    atoms: List[Atom] = []
+    for i in range(6):
+        angle = math.radians(60.0 * i + 30.0)
+        x = cx + radius * math.cos(angle)
+        y = cy + radius * math.sin(angle)
+        atoms.append(("C", x, y, cz))
+        atoms.append(("H", cx + (radius + 1.05) * math.cos(angle), cy + (radius + 1.05) * math.sin(angle), cz))
+    return atoms
+
+
+def _pc_fragment() -> List[Atom]:
+    """Small BPA-polycarbonate-like motif with carbonate, phenyl, and isopropylidene groups."""
+    atoms: List[Atom] = []
+    atoms.extend(_phenyl_ring(-3.4, 0.0, 0.0))
+    atoms.extend(_phenyl_ring(3.4, 0.0, 0.0))
+    atoms.extend(
+        [
+            ("O", -1.25, 0.0, 0.0),
+            ("C", 0.0, 0.0, 0.0),
+            ("O", 1.25, 0.0, 0.0),
+            ("O", 0.0, 0.0, -1.22),
+            ("C", 0.0, 2.25, 0.0),
+            ("C", -1.15, 3.05, 0.45),
+            ("H", -1.95, 2.45, 0.75),
+            ("H", -1.45, 3.90, -0.15),
+            ("H", -0.70, 3.45, 1.35),
+            ("C", 1.15, 3.05, -0.45),
+            ("H", 1.95, 2.45, -0.75),
+            ("H", 1.45, 3.90, 0.15),
+            ("H", 0.70, 3.45, -1.35),
+        ]
+    )
+    return atoms
+
+
 def _min_distance(a: Sequence[Atom], b: Sequence[Atom]) -> float:
     value = 10**9
     for ea, xa, ya, za in a:
@@ -147,7 +183,12 @@ def _anchor_specs(config: Dict[str, Any]) -> List[Dict[str, Any]]:
         {"family": "PP_methyl_silanol_contact", "surface_type": "silanol_rich", "polymer": "PP", "z_gap_A": 2.9, "angle_deg": 10.0},
         {"family": "PP_methyl_siloxane_contact", "surface_type": "siloxane_rich", "polymer": "PP", "z_gap_A": 3.1, "angle_deg": -20.0},
         {"family": "PP_backbone_CH_silanol_contact", "surface_type": "silanol_rich", "polymer": "PP", "z_gap_A": 3.4, "angle_deg": 90.0},
+        {"family": "PC_carbonate_silanol_contact", "surface_type": "silanol_rich", "polymer": "PC", "z_gap_A": 2.7, "angle_deg": 0.0, "teaches": "BPA-PC carbonate oxygen/carbonyl contact with hydroxylated silica."},
+        {"family": "PC_phenyl_siloxane_contact", "surface_type": "siloxane_rich", "polymer": "PC", "z_gap_A": 3.0, "angle_deg": 35.0, "teaches": "BPA-PC phenyl dispersion contact with siloxane-rich silica."},
         {"family": "PE_PP_mixed_silanol_contact", "surface_type": "silanol_rich", "polymer": "PE_PP", "z_gap_A": 3.2},
+        {"family": "PE_PC_mixed_silanol_contact", "surface_type": "silanol_rich", "polymer": "PE_PC", "z_gap_A": 3.1, "teaches": "Mixed PE/PC near-wall contact including PC carbonate and PE CH2 environments."},
+        {"family": "PP_PC_mixed_silanol_contact", "surface_type": "silanol_rich", "polymer": "PP_PC", "z_gap_A": 3.1, "teaches": "Mixed PP/PC near-wall contact including PP methyl and PC carbonate/phenyl environments."},
+        {"family": "PE_PP_PC_mixed_silanol_contact", "surface_type": "silanol_rich", "polymer": "PE_PP_PC", "z_gap_A": 3.2, "teaches": "Three-polymer mixed near-wall local packing around hydroxylated silica."},
         {"family": "crowded_polymer_wall_contact", "surface_type": "silanol_rich", "polymer": "PE_PP", "z_gap_A": 2.7, "crowded": True},
     ]
 
@@ -169,10 +210,25 @@ def build_small_anchor_structures(config: Dict[str, Any], mode: str = "tiny") ->
             polymer = _place_fragment(_pe_fragment(), surface, float(spec.get("z_gap_A", 3.0)), float(spec.get("angle_deg", 0.0)))
         elif polymer_kind == "PP":
             polymer = _place_fragment(_pp_fragment(), surface, float(spec.get("z_gap_A", 3.0)), float(spec.get("angle_deg", 0.0)))
+        elif polymer_kind == "PC":
+            polymer = _place_fragment(_pc_fragment(), surface, float(spec.get("z_gap_A", 3.0)), float(spec.get("angle_deg", 0.0)))
         elif polymer_kind == "PE_PP":
             pe = _place_fragment(_pe_fragment(5), surface, float(spec.get("z_gap_A", 3.0)), -15.0, -1.2)
             pp = _place_fragment(_pp_fragment(2), surface, float(spec.get("z_gap_A", 3.0)) + (0.2 if spec.get("crowded") else 0.8), 18.0, 1.2)
             polymer = pe + pp
+        elif polymer_kind == "PE_PC":
+            pe = _place_fragment(_pe_fragment(4), surface, float(spec.get("z_gap_A", 3.0)) + 0.4, -20.0, -1.3)
+            pc = _place_fragment(_pc_fragment(), surface, float(spec.get("z_gap_A", 3.0)), 20.0, 1.0)
+            polymer = pe + pc
+        elif polymer_kind == "PP_PC":
+            pp = _place_fragment(_pp_fragment(2), surface, float(spec.get("z_gap_A", 3.0)) + 0.4, -15.0, -1.3)
+            pc = _place_fragment(_pc_fragment(), surface, float(spec.get("z_gap_A", 3.0)), 25.0, 1.0)
+            polymer = pp + pc
+        elif polymer_kind == "PE_PP_PC":
+            pe = _place_fragment(_pe_fragment(3), surface, float(spec.get("z_gap_A", 3.0)) + 0.7, -25.0, -1.8)
+            pp = _place_fragment(_pp_fragment(2), surface, float(spec.get("z_gap_A", 3.0)) + 0.5, 15.0, 0.0)
+            pc = _place_fragment(_pc_fragment(), surface, float(spec.get("z_gap_A", 3.0)), 35.0, 1.8)
+            polymer = pe + pp + pc
         atoms = surface + polymer
         min_dist = _min_distance(surface, polymer) if polymer else ""
         atoms, origin_shift = _center_in_cell(atoms, box)

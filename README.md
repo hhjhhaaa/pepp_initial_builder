@@ -1,8 +1,8 @@
 # PE/PP-Silica Data Generation Module
 
-`pepp_initial_builder` is the PE/PP-silica data-generation module. It prepares controlled PE/PP-silica interface anchor structures, EMC PE/PP polymer structures, PoreMS silica pores and patches, Packmol-packed full-pore starting structures, CP2K/AIMD labeling inputs, parsed CP2K labels, AIMD train/val/test datasets, manifests, and validation reports.
+`pepp_initial_builder` is the PE/PP/PC-silica data-generation module. It prepares controlled PE/PP/PC-silica interface anchor structures, EMC PE/PP polymer structures, PoreMS silica pores and patches, Packmol-packed full-pore starting structures, CP2K/AIMD labeling inputs, parsed CP2K labels, AIMD train/val/test datasets, manifests, and validation reports.
 
-It does not train MLFF models, run formal MLFF production trajectories, train Graph-SPIB, or do descriptor distillation. The first CP2K/AIMD anchor line is deliberately small and controlled: crystalline silica/SiOH or Si-O-Si face fragments plus short PE/PP repeat units. The full-pore line remains available for later diversity after Packmol/LAMMPS structures pass quality gates.
+It does not train MLFF models, run formal MLFF production trajectories, train Graph-SPIB, or do descriptor distillation. The first CP2K/AIMD anchor line is deliberately small and controlled: crystalline silica/SiOH or Si-O-Si face fragments plus short PE/PP/PC repeat-unit motifs. The full-pore line remains available for later diversity after Packmol/LAMMPS structures pass quality gates.
 
 The project boundary has three top-level repositories:
 
@@ -80,14 +80,14 @@ Small-interface anchor method:
 
 ```text
 1. Build small periodic cells containing a silica/SiOH or Si-O-Si face fragment.
-2. Place short PE/PP repeat-unit fragments in controlled contact motifs:
-   PE CH2-wall, PP methyl-wall, PP backbone-wall, PE/PP mixed wall, crowded wall, and silica-only baseline.
+2. Place short PE/PP/PC fragments in controlled contact motifs:
+   PE CH2-wall, PP methyl-wall, PP backbone-wall, PC carbonate-wall, PC phenyl-wall, PE/PP mixed wall, PE/PC mixed wall, PP/PC mixed wall, PE/PP/PC mixed wall, crowded wall, and silica-only baseline.
 3. Write CP2K ENERGY_FORCE inputs first. These SP jobs produce fixed-geometry energy/force labels.
 4. Parse only real CP2K normal-end outputs. No classical FF, xTB, estimated, or stale labels enter the dataset.
 5. Select short AIMD only from successful SP anchors.
 ```
 
-This small-anchor path is the preferred first route for learning local PE/PP/SiOH/Si-O-Si interactions. It is meant to stabilize the C/H/O/Si local potential surface before relying on noisier full-pore crops. The run namespace is `pilot_20260705_small_interface_anchors` in `configs/cp2k_small_anchors.yaml`.
+This small-anchor path is the preferred first route for learning local PE/PP/PC/SiOH/Si-O-Si interactions. It is meant to stabilize the C/H/O/Si local potential surface before relying on noisier full-pore crops. The run namespace is `pilot_20260705_small_interface_anchors` in `configs/cp2k_small_anchors.yaml`.
 
 Full-pore structure method:
 

@@ -27,7 +27,7 @@ def _cfg(tmp_path: Path) -> dict:
         "small_anchor_structures": {
             "cell_abc_A": [18.0, 18.0, 18.0],
             "min_polymer_surface_distance_A": 1.7,
-            "tiny_max_structures": 8,
+            "tiny_max_structures": 13,
         },
         "cp2k": {
             "method": "PBE_D3_BJ",
@@ -61,8 +61,8 @@ def _cfg(tmp_path: Path) -> dict:
         },
         "dataset": {
             "dataset_id": "small_anchor_test",
-            "tiny_max_structures": 8,
-            "main_max_structures": 24,
+            "tiny_max_structures": 13,
+            "main_max_structures": 36,
             "min_frames_for_training": 2,
             "train_fraction": 0.8,
             "val_fraction": 0.1,
@@ -82,10 +82,13 @@ def test_small_anchor_structures_feed_cp2k_inputs(tmp_path):
     manifest = build_small_anchor_structures(cfg, "tiny")
     rows = pd.read_csv(manifest)
 
-    assert len(rows) == 8
+    assert len(rows) == 13
     assert set(rows["source_stage"]) == {"designed_small_interface_anchor"}
     assert set(rows["status"]) == {"available"}
-    assert rows["n_atoms"].max() < 100
+    assert rows["n_atoms"].max() < 120
+    assert {"PC", "PE_PC", "PP_PC", "PE_PP_PC"}.issubset(set(rows["polymer_architecture"]))
+    assert "PC_carbonate_silanol_contact" in set(rows["family"])
+    assert "PC_phenyl_siloxane_contact" in set(rows["family"])
     assert {"nearest_site_type", "n_silanol_OH_within_5A", "n_siloxane_O_within_5A"}.issubset(rows.columns)
     for path in rows["extxyz_path"]:
         text = Path(path).read_text(encoding="utf-8")
@@ -95,7 +98,7 @@ def test_small_anchor_structures_feed_cp2k_inputs(tmp_path):
 
     input_manifest = write_cp2k_label_inputs(cfg, "tiny")
     input_rows = pd.read_csv(input_manifest)
-    assert len(input_rows) == 8
+    assert len(input_rows) == 13
     assert set(input_rows["label_mode"]) == {"sp_force"}
     first_input = Path(input_rows.iloc[0]["input_inp_path"]).read_text(encoding="utf-8")
     assert "RUN_TYPE ENERGY_FORCE" in first_input

@@ -38,11 +38,11 @@ small_anchor_structures:
   anchor_design: small_crystalline_face_short_repeat_unit
   cell_abc_A: [18.0, 18.0, 18.0]
   min_polymer_surface_distance_A: 1.7
-  tiny_max_structures: 8
-  pilot_max_structures: 12
-  main_max_structures: 24
+  tiny_max_structures: 13
+  pilot_max_structures: 18
+  main_max_structures: 36
 cp2k:
-  project_prefix: pepp_chosi_small_anchor
+  project_prefix: pepppc_chosi_small_anchor
   method: PBE_D3_BJ
   run_types: [ENERGY_FORCE, MD]
   xc_functional: PBE
@@ -98,7 +98,7 @@ hpc:
   sp_array_throttle: 8
   aimd_array_throttle: 4
 dataset:
-  dataset_id: pepp_silica_small_anchor_cp2k
+  dataset_id: pepppc_silica_small_anchor_cp2k
   output_format: extxyz
   split_strategy: family_blocked
   accepted_source_stages: [designed_small_interface_anchor]
@@ -108,10 +108,10 @@ dataset:
   require_energy: true
   require_forces: true
   optional_stress: true
-  min_frames_for_training: 8
-  tiny_max_structures: 8
-  pilot_max_structures: 12
-  main_max_structures: 24
+  min_frames_for_training: 12
+  tiny_max_structures: 13
+  pilot_max_structures: 18
+  main_max_structures: 36
 units:
   output_energy: eV
   output_forces: eV_per_A
