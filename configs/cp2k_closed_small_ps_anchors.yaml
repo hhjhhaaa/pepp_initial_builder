@@ -84,12 +84,12 @@ cp2k:
   periodic: XYZ
   charge: 0
   multiplicity: 1
-  cutoff_Ry: 450
-  rel_cutoff_Ry: 60
+  cutoff_Ry: 400
+  rel_cutoff_Ry: 50
   eps_scf: 1.0e-5
-  max_scf: 2000
+  max_scf: 800
   scf_solver: OT
-  outer_scf_max: 20
+  outer_scf_max: 12
   ot_preconditioner: FULL_SINGLE_INVERSE
   ot_minimizer: DIIS
   ot_stepsize: 0.08
