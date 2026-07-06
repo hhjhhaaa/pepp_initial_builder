@@ -390,6 +390,23 @@ def _write_metadata(
     return metadata
 
 
+def metadata_is_relaxed(system_dir: Path) -> bool:
+    meta_path = system_dir / "metadata.yaml"
+    if not meta_path.exists():
+        return False
+    metadata = yaml.safe_load(meta_path.read_text(encoding="utf-8")) or {}
+    relaxed_extxyz = metadata.get("paths", {}).get("mlff_start_extxyz")
+    relaxed_data = metadata.get("paths", {}).get("mlff_start_lammps_data")
+    return (
+        metadata.get("status") == "available_relaxed"
+        and metadata.get("relaxation", {}).get("lammps_thermal_relax_performed") is True
+        and bool(relaxed_extxyz)
+        and bool(relaxed_data)
+        and Path(str(relaxed_extxyz)).exists()
+        and Path(str(relaxed_data)).exists()
+    )
+
+
 def _update_manifest_row(config: Dict[str, Any], mode: str, metadata: Dict[str, Any]) -> Path:
     library_dir = emc_library_dir(config)
     manifest = library_dir / f"emc_library_manifest_{mode}.csv"
@@ -438,12 +455,16 @@ def build_pure_library_system(config: Dict[str, Any], row: Dict[str, Any], run_r
     return system_dir
 
 
-def run_pure_library_relax_system(config: Dict[str, Any], system_id: str, mode: str = "pilot") -> Path:
+def run_pure_library_relax_system(config: Dict[str, Any], system_id: str, mode: str = "pilot", force: bool = False) -> Path:
     row = pure_library_row(config, system_id, mode)
     system_dir = emc_library_dir(config) / system_id
     for required in ["polymer.data", "polymer.params", "polymer.extxyz", "metadata.yaml"]:
         if not (system_dir / required).exists():
             raise FileNotFoundError(f"Missing {required} in existing EMC library system {system_dir}")
+    if metadata_is_relaxed(system_dir) and not force:
+        metadata = yaml.safe_load((system_dir / "metadata.yaml").read_text(encoding="utf-8")) or {}
+        _update_manifest_row(config, mode, metadata)
+        return system_dir
     relaxation = _run_thermal_relax(system_dir, row, config)
     metadata = _write_metadata(config, row, system_dir, relaxation)
     _update_manifest_row(config, mode, metadata)
@@ -455,6 +476,7 @@ def run_pure_library_relax(
     mode: str = "pilot",
     system_ids: List[str] | None = None,
     max_systems: int | None = None,
+    force: bool = False,
 ) -> Path:
     ensure_dirs(config)
     selected = system_ids or [str(row["system_id"]) for row in pure_library_rows(config, mode)]
@@ -463,7 +485,7 @@ def run_pure_library_relax(
     rows = []
     for system_id in selected:
         try:
-            path = run_pure_library_relax_system(config, system_id, mode)
+            path = run_pure_library_relax_system(config, system_id, mode, force)
             metadata = yaml.safe_load((path / "metadata.yaml").read_text(encoding="utf-8")) or {}
             rows.append({
                 "system_id": system_id,

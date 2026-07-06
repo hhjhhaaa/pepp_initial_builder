@@ -3,7 +3,12 @@ from pathlib import Path
 from pepp_initial_builder.common.config import load_config
 from pepp_initial_builder.common.openbabel import _obabel_format
 from pepp_initial_builder.polymer.emc_builder import _recipe_text
-from pepp_initial_builder.polymer.emc_library import _metadata_for_system, pure_library_row, render_pure_recipe
+from pepp_initial_builder.polymer.emc_library import (
+    _metadata_for_system,
+    metadata_is_relaxed,
+    pure_library_row,
+    render_pure_recipe,
+)
 
 
 def test_emc_recipe_uses_pcff_and_no_python_builder():
@@ -73,3 +78,26 @@ def test_relaxed_metadata_points_mlff_start_to_relaxed_structure(tmp_path: Path)
     metadata = _metadata_for_system(cfg, row, tmp_path, relaxation)
     assert metadata["status"] == "available_relaxed"
     assert metadata["paths"]["mlff_start_extxyz"].endswith("relaxed.extxyz")
+
+
+def test_metadata_is_relaxed_requires_files(tmp_path: Path):
+    relaxed_extxyz = tmp_path / "relaxed.extxyz"
+    relaxed_data = tmp_path / "relaxed.data"
+    (tmp_path / "metadata.yaml").write_text(
+        "\n".join(
+            [
+                "status: available_relaxed",
+                "paths:",
+                f"  mlff_start_extxyz: {relaxed_extxyz}",
+                f"  mlff_start_lammps_data: {relaxed_data}",
+                "relaxation:",
+                "  lammps_thermal_relax_performed: true",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    assert metadata_is_relaxed(tmp_path) is False
+    relaxed_extxyz.write_text("1\n\nH 0 0 0\n", encoding="utf-8")
+    relaxed_data.write_text("LAMMPS data\n", encoding="utf-8")
+    assert metadata_is_relaxed(tmp_path) is True

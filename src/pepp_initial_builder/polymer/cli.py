@@ -40,6 +40,7 @@ def build_emc_library_main(argv: Sequence[str] | None = None) -> None:
 def run_emc_thermal_relax_main(argv: Sequence[str] | None = None) -> None:
     parser = _parser()
     parser.add_argument("--system-id", action="append", dest="system_ids")
+    parser.add_argument("--force", action="store_true", help="Rerun LAMMPS even when relaxed outputs already exist.")
     args = parser.parse_args(argv)
     print(
         run_pure_library_relax(
@@ -47,6 +48,7 @@ def run_emc_thermal_relax_main(argv: Sequence[str] | None = None) -> None:
             mode_from_args(args, "pilot"),
             args.system_ids,
             args.max_systems,
+            args.force,
         )
     )
 
