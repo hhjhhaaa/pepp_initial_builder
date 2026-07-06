@@ -5,8 +5,10 @@ import json
 import os
 import shutil
 import subprocess
+from contextlib import contextmanager
+import fcntl
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, Iterator, List
 
 import pandas as pd
 import yaml
@@ -113,6 +115,23 @@ def _run_captured(command: List[str], cwd: Path, env: Dict[str, str], log_path: 
     log_path.write_text(proc.stdout, encoding="utf-8")
     if proc.returncode != 0:
         raise RuntimeError(f"Command failed: {' '.join(command)}; see {log_path}")
+
+
+@contextmanager
+def _thermal_relax_lock(system_dir: Path) -> Iterator[Path]:
+    lock_path = system_dir / ".thermal_relax.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("w", encoding="utf-8") as handle:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise RuntimeError(f"Thermal relaxation is already running in {system_dir}") from exc
+        handle.write(f"pid={os.getpid()}\n")
+        handle.flush()
+        try:
+            yield lock_path
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def render_pure_recipe(row: Dict[str, Any], config: Dict[str, Any]) -> str:
@@ -465,8 +484,13 @@ def run_pure_library_relax_system(config: Dict[str, Any], system_id: str, mode: 
         metadata = yaml.safe_load((system_dir / "metadata.yaml").read_text(encoding="utf-8")) or {}
         _update_manifest_row(config, mode, metadata)
         return system_dir
-    relaxation = _run_thermal_relax(system_dir, row, config)
-    metadata = _write_metadata(config, row, system_dir, relaxation)
+    with _thermal_relax_lock(system_dir):
+        if metadata_is_relaxed(system_dir) and not force:
+            metadata = yaml.safe_load((system_dir / "metadata.yaml").read_text(encoding="utf-8")) or {}
+            _update_manifest_row(config, mode, metadata)
+            return system_dir
+        relaxation = _run_thermal_relax(system_dir, row, config)
+        metadata = _write_metadata(config, row, system_dir, relaxation)
     _update_manifest_row(config, mode, metadata)
     return system_dir
 

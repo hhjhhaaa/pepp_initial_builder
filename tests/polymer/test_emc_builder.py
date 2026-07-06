@@ -1,10 +1,13 @@
 from pathlib import Path
 
+import pytest
+
 from pepp_initial_builder.common.config import load_config
 from pepp_initial_builder.common.openbabel import _obabel_format
 from pepp_initial_builder.polymer.emc_builder import _recipe_text
 from pepp_initial_builder.polymer.emc_library import (
     _metadata_for_system,
+    _thermal_relax_lock,
     metadata_is_relaxed,
     pure_library_row,
     render_pure_recipe,
@@ -101,3 +104,10 @@ def test_metadata_is_relaxed_requires_files(tmp_path: Path):
     relaxed_extxyz.write_text("1\n\nH 0 0 0\n", encoding="utf-8")
     relaxed_data.write_text("LAMMPS data\n", encoding="utf-8")
     assert metadata_is_relaxed(tmp_path) is True
+
+
+def test_thermal_relax_lock_blocks_concurrent_system_runs(tmp_path: Path):
+    with _thermal_relax_lock(tmp_path):
+        with pytest.raises(RuntimeError, match="already running"):
+            with _thermal_relax_lock(tmp_path):
+                pass
