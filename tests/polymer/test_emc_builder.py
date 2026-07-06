@@ -3,7 +3,7 @@ from pathlib import Path
 from pepp_initial_builder.common.config import load_config
 from pepp_initial_builder.common.openbabel import _obabel_format
 from pepp_initial_builder.polymer.emc_builder import _recipe_text
-from pepp_initial_builder.polymer.emc_library import render_pure_recipe
+from pepp_initial_builder.polymer.emc_library import _metadata_for_system, pure_library_row, render_pure_recipe
 
 
 def test_emc_recipe_uses_pcff_and_no_python_builder():
@@ -46,3 +46,30 @@ def test_emc_library_recipes_cover_pe_pp_ps():
 def test_openbabel_format_mapping_supports_extxyz_and_pdb_gz():
     assert _obabel_format(Path("polymer.extxyz")) == "exyz"
     assert _obabel_format(Path("polymer.pdb.gz")) == "pdb"
+
+
+def test_emc_library_can_select_system_by_id():
+    cfg = load_config("configs/polymer.yaml")
+    row = pure_library_row(cfg, "PS100_N12_C16_emc_seed1", "pilot")
+    assert row["component"] == "PS"
+
+
+def test_relaxed_metadata_points_mlff_start_to_relaxed_structure(tmp_path: Path):
+    cfg = load_config("configs/polymer.yaml")
+    row = {
+        "system_id": "PE_test",
+        "component": "PE",
+        "n_chains": 1,
+        "repeat_units": 2,
+        "density_g_cm3": 0.855,
+        "temperature_K": 523.0,
+        "ntotal": 20,
+    }
+    relaxation = {
+        "lammps_thermal_relax_performed": True,
+        "relaxed_extxyz": str(tmp_path / "relaxed.extxyz"),
+        "relaxed_lammps_data": str(tmp_path / "relaxed.data"),
+    }
+    metadata = _metadata_for_system(cfg, row, tmp_path, relaxation)
+    assert metadata["status"] == "available_relaxed"
+    assert metadata["paths"]["mlff_start_extxyz"].endswith("relaxed.extxyz")

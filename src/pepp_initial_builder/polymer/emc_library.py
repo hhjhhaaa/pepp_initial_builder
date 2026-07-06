@@ -58,6 +58,17 @@ def pure_library_rows(config: Dict[str, Any], mode: str = "pilot") -> List[Dict[
     return [dict(row) for row in rows]
 
 
+def emc_library_dir(config: Dict[str, Any]) -> Path:
+    return project_root(config) / config["paths"].get("emc_library_dir", "data/polymer/emc_library")
+
+
+def pure_library_row(config: Dict[str, Any], system_id: str, mode: str = "pilot") -> Dict[str, Any]:
+    for row in pure_library_rows(config, mode):
+        if str(row.get("system_id")) == system_id:
+            return row
+    raise KeyError(f"No EMC library system_id {system_id!r} in {mode} config")
+
+
 def _emc_paths(config: Dict[str, Any]) -> Dict[str, str]:
     tools = discover_tools(config)
     emc = tools["emc"]
@@ -207,6 +218,10 @@ def _write_relax_input(system_dir: Path, row: Dict[str, Any], config: Dict[str, 
     settle = int(relax.get("nvt_settle_steps", 100000))
     thermo = int(relax.get("thermo_every", 1000))
     dump = int(relax.get("dump_every", 10000))
+    minimize_etol = str(relax.get("minimize_etol", "1.0e-6"))
+    minimize_ftol = str(relax.get("minimize_ftol", "1.0e-8"))
+    minimize_maxiter = int(relax.get("minimize_maxiter", 10000))
+    minimize_maxeval = int(relax.get("minimize_maxeval", 20000))
     out.write_text(
         f"""units real
 atom_style full
@@ -221,7 +236,7 @@ thermo_style custom step temp density press pe ke etotal vol lx ly lz
 thermo_modify lost error flush yes
 
 min_style fire
-minimize 1.0e-6 1.0e-8 10000 20000
+minimize {minimize_etol} {minimize_ftol} {minimize_maxiter} {minimize_maxeval}
 
 velocity all create {temp:.3f} 4928459 mom yes rot yes dist gaussian
 timestep {timestep:.6f}
@@ -262,7 +277,13 @@ def _run_thermal_relax(system_dir: Path, row: Dict[str, Any], config: Dict[str, 
         raise RuntimeError("LAMMPS executable not found for EMC library thermal relaxation")
     script = _write_relax_input(system_dir, row, config)
     timeout = int(config.get("emc_library", {}).get("thermal_relax", {}).get("timeout_seconds", 21600))
-    _run_checked([str(lmp), "-in", script.name], system_dir, os.environ.copy(), system_dir / "thermal_relax.log", timeout)
+    _run_checked(
+        [str(lmp), "-log", "thermal_relax.lammps.log", "-in", script.name],
+        system_dir,
+        os.environ.copy(),
+        system_dir / "thermal_relax.log",
+        timeout,
+    )
     configured_obabel = config.get("tools", {}).get("known_openbabel_executable")
     exe = obabel_executable(configured_obabel)
     if not exe:
@@ -282,44 +303,40 @@ def _run_thermal_relax(system_dir: Path, row: Dict[str, Any], config: Dict[str, 
         "lammps_thermal_relax_performed": True,
         "relax_is_training_data": False,
         "relax_is_production_md": False,
+        "relax_protocol": config.get("emc_library", {}).get("thermal_relax", {}).get(
+            "protocol",
+            "emc_polymer_lammps_thermal_relax_v1",
+        ),
         "thermal_relax_input": str(script),
         "thermal_relax_log": str(system_dir / "thermal_relax.log"),
+        "thermal_relax_lammps_log": str(system_dir / "thermal_relax.lammps.log"),
         "relaxed_lammps_data": str(system_dir / "relaxed.data"),
         "relaxed_extxyz": str(system_dir / "relaxed.extxyz"),
     }
 
 
-def build_pure_library_system(config: Dict[str, Any], row: Dict[str, Any], run_relax: bool = False) -> Path:
-    paths = _emc_paths(config)
-    library_dir = project_root(config) / config["paths"].get("emc_library_dir", "data/polymer/emc_library")
-    system_dir = library_dir / str(row["system_id"])
-    system_dir.mkdir(parents=True, exist_ok=True)
-    recipe = system_dir / "polymer.esh"
-    recipe.write_text(render_pure_recipe(row, config), encoding="utf-8")
-    env = os.environ.copy()
-    env.update({"EMC_ROOT": paths["root"], "PATH": f"{Path(paths['root']) / 'scripts'}:{Path(paths['root']) / 'bin'}:{env.get('PATH', '')}"})
-    timeout_setup = int(config.get("emc", {}).get("attempt_timeout_seconds", 300))
-    timeout_build = int(config.get("emc", {}).get("build_timeout_seconds", 900))
-    _run_captured([paths["emc_pl"], "-replace", "polymer"], system_dir, env, system_dir / "emc_setup.log", timeout_setup)
-    _run_captured([paths["emc"], "build.emc"], system_dir, env, system_dir / "emc_build.log", timeout_build)
-    for required in ["polymer.data", "polymer.params", "polymer.pdb.gz"]:
-        if not (system_dir / required).exists():
-            raise FileNotFoundError(f"EMC build did not produce {required} in {system_dir}")
-    _convert_pdb_outputs(system_dir, config)
-
-    relaxation: Dict[str, Any] = {
+def _default_relaxation() -> Dict[str, Any]:
+    return {
         "lammps_thermal_relax_performed": False,
         "relax_is_training_data": False,
         "relax_is_production_md": False,
     }
-    if run_relax:
-        relaxation = _run_thermal_relax(system_dir, row, config)
+
+
+def _metadata_for_system(
+    config: Dict[str, Any],
+    row: Dict[str, Any],
+    system_dir: Path,
+    relaxation: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    relaxation = relaxation or _default_relaxation()
+    recipe = system_dir / "polymer.esh"
 
     component = str(row["component"]).upper()
     task_lane = str(row.get("task_lane") or config.get("emc_library", {}).get("task_lane", "mlff_direct"))
     if task_lane != "mlff_direct":
         raise ValueError("Pure EMC polymer library currently builds only the mlff_direct structure lane")
-    metadata = {
+    return {
         "system_id": row["system_id"],
         "components": [component],
         "n_chains": int(row["n_chains"]),
@@ -356,15 +373,125 @@ def build_pure_library_system(config: Dict[str, Any], row: Dict[str, Any], run_r
             "classical_relaxation_is_label_source": False,
             "zero_shot_mace_outputs_are": config.get("emc_library", {}).get("output_label_status", "provisional MLFF labels"),
         },
-        "status": "available_relaxed" if run_relax else "available_emc_built",
+        "status": "available_relaxed"
+        if relaxation.get("lammps_thermal_relax_performed") is True
+        else "available_emc_built",
     }
+
+
+def _write_metadata(
+    config: Dict[str, Any],
+    row: Dict[str, Any],
+    system_dir: Path,
+    relaxation: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    metadata = _metadata_for_system(config, row, system_dir, relaxation)
     (system_dir / "metadata.yaml").write_text(yaml.safe_dump(metadata, sort_keys=False), encoding="utf-8")
+    return metadata
+
+
+def _update_manifest_row(config: Dict[str, Any], mode: str, metadata: Dict[str, Any]) -> Path:
+    library_dir = emc_library_dir(config)
+    manifest = library_dir / f"emc_library_manifest_{mode}.csv"
+    row = {
+        "system_id": metadata["system_id"],
+        "task_lane": metadata.get("structure_task", {}).get("lane", ""),
+        "status": "available",
+        "system_dir": str((library_dir / metadata["system_id"]).resolve()),
+        "metadata_yaml_path": str((library_dir / metadata["system_id"] / "metadata.yaml").resolve()),
+        "mlff_start_extxyz_path": metadata.get("paths", {}).get("mlff_start_extxyz", ""),
+        "failure_reason": "",
+    }
+    if manifest.exists():
+        frame = pd.read_csv(manifest)
+        frame = frame[frame["system_id"] != metadata["system_id"]]
+        frame = pd.concat([frame, pd.DataFrame([row])], ignore_index=True)
+    else:
+        frame = pd.DataFrame([row])
+    frame.to_csv(manifest, index=False)
+    return manifest
+
+
+def build_pure_library_system(config: Dict[str, Any], row: Dict[str, Any], run_relax: bool = False) -> Path:
+    paths = _emc_paths(config)
+    library_dir = emc_library_dir(config)
+    system_dir = library_dir / str(row["system_id"])
+    system_dir.mkdir(parents=True, exist_ok=True)
+    recipe = system_dir / "polymer.esh"
+    recipe.write_text(render_pure_recipe(row, config), encoding="utf-8")
+    env = os.environ.copy()
+    env.update({"EMC_ROOT": paths["root"], "PATH": f"{Path(paths['root']) / 'scripts'}:{Path(paths['root']) / 'bin'}:{env.get('PATH', '')}"})
+    timeout_setup = int(config.get("emc", {}).get("attempt_timeout_seconds", 300))
+    timeout_build = int(config.get("emc", {}).get("build_timeout_seconds", 900))
+    _run_captured([paths["emc_pl"], "-replace", "polymer"], system_dir, env, system_dir / "emc_setup.log", timeout_setup)
+    _run_captured([paths["emc"], "build.emc"], system_dir, env, system_dir / "emc_build.log", timeout_build)
+    for required in ["polymer.data", "polymer.params", "polymer.pdb.gz"]:
+        if not (system_dir / required).exists():
+            raise FileNotFoundError(f"EMC build did not produce {required} in {system_dir}")
+    _convert_pdb_outputs(system_dir, config)
+
+    relaxation = _default_relaxation()
+    if run_relax:
+        relaxation = _run_thermal_relax(system_dir, row, config)
+
+    _write_metadata(config, row, system_dir, relaxation)
     return system_dir
+
+
+def run_pure_library_relax_system(config: Dict[str, Any], system_id: str, mode: str = "pilot") -> Path:
+    row = pure_library_row(config, system_id, mode)
+    system_dir = emc_library_dir(config) / system_id
+    for required in ["polymer.data", "polymer.params", "polymer.extxyz", "metadata.yaml"]:
+        if not (system_dir / required).exists():
+            raise FileNotFoundError(f"Missing {required} in existing EMC library system {system_dir}")
+    relaxation = _run_thermal_relax(system_dir, row, config)
+    metadata = _write_metadata(config, row, system_dir, relaxation)
+    _update_manifest_row(config, mode, metadata)
+    return system_dir
+
+
+def run_pure_library_relax(
+    config: Dict[str, Any],
+    mode: str = "pilot",
+    system_ids: List[str] | None = None,
+    max_systems: int | None = None,
+) -> Path:
+    ensure_dirs(config)
+    selected = system_ids or [str(row["system_id"]) for row in pure_library_rows(config, mode)]
+    if max_systems is not None:
+        selected = selected[:max_systems]
+    rows = []
+    for system_id in selected:
+        try:
+            path = run_pure_library_relax_system(config, system_id, mode)
+            metadata = yaml.safe_load((path / "metadata.yaml").read_text(encoding="utf-8")) or {}
+            rows.append({
+                "system_id": system_id,
+                "task_lane": metadata.get("structure_task", {}).get("lane", ""),
+                "status": "available",
+                "system_dir": str(path),
+                "metadata_yaml_path": str(path / "metadata.yaml"),
+                "mlff_start_extxyz_path": metadata.get("paths", {}).get("mlff_start_extxyz", ""),
+                "failure_reason": "",
+            })
+        except Exception as exc:
+            rows.append({
+                "system_id": system_id,
+                "task_lane": config.get("emc_library", {}).get("task_lane", "mlff_direct"),
+                "status": "failed",
+                "system_dir": "",
+                "metadata_yaml_path": "",
+                "mlff_start_extxyz_path": "",
+                "failure_reason": str(exc),
+            })
+    manifest = emc_library_dir(config) / f"emc_library_relax_manifest_{mode}.csv"
+    pd.DataFrame(rows).to_csv(manifest, index=False)
+    return manifest
 
 
 def build_pure_library(config: Dict[str, Any], mode: str = "pilot", run_relax: bool = False, max_systems: int | None = None) -> Path:
     ensure_dirs(config)
-    library_dir = project_root(config) / config["paths"].get("emc_library_dir", "data/polymer/emc_library")
+    library_dir = emc_library_dir(config)
     library_dir.mkdir(parents=True, exist_ok=True)
     rows = []
     selected_rows = pure_library_rows(config, mode)

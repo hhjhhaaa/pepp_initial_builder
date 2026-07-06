@@ -91,6 +91,10 @@ emc_library:
     tdamp_fs: 100.0
     pdamp_fs: 1000.0
     anneal_temperature_K: 650.0
+    minimize_etol: 1.0e-6
+    minimize_ftol: 1.0e-8
+    minimize_maxiter: 10000
+    minimize_maxeval: 20000
     warmup_steps: 10000
     nvt_heat_steps: 50000
     nvt_cool_steps: 50000
