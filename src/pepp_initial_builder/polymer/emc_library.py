@@ -208,6 +208,73 @@ def _patch_extxyz_cell(path: Path, box: List[float]) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _element_from_mass(mass: float) -> str:
+    reference = {
+        "H": 1.008,
+        "C": 12.011,
+        "N": 14.007,
+        "O": 15.999,
+        "F": 18.998,
+        "Si": 28.085,
+        "P": 30.974,
+        "S": 32.06,
+        "Cl": 35.45,
+    }
+    element, reference_mass = min(reference.items(), key=lambda item: abs(item[1] - mass))
+    delta = abs(reference_mass - mass)
+    if delta > 0.25:
+        raise ValueError(f"Could not infer element from LAMMPS mass {mass}")
+    return element
+
+
+def _type_elements_from_lammps_data(path: Path) -> Dict[int, str]:
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    in_masses = False
+    masses: Dict[int, str] = {}
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line == "Masses":
+            in_masses = True
+            continue
+        if in_masses and line[0].isalpha():
+            break
+        if not in_masses:
+            continue
+        body, _, comment = line.partition("#")
+        parts = body.split()
+        if len(parts) < 2:
+            continue
+        atom_type = int(parts[0])
+        mass = float(parts[1])
+        commented_element = comment.strip().split()[0] if comment.strip() else ""
+        masses[atom_type] = commented_element if commented_element.isalpha() else _element_from_mass(mass)
+    if not masses:
+        raise ValueError(f"Could not parse Masses section from {path}")
+    return masses
+
+
+def _rewrite_extxyz_species_from_lammps_xyz(xyz_path: Path, extxyz_path: Path, data_path: Path) -> None:
+    type_elements = _type_elements_from_lammps_data(data_path)
+    lines = xyz_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    if len(lines) < 2:
+        raise ValueError(f"Invalid XYZ file: {xyz_path}")
+    natoms = int(lines[0].strip())
+    atom_lines = lines[2 : 2 + natoms]
+    if len(atom_lines) != natoms:
+        raise ValueError(f"XYZ atom count mismatch in {xyz_path}")
+    out = [str(natoms), extxyz_path.read_text(encoding="utf-8", errors="replace").splitlines()[1]]
+    for raw_line in atom_lines:
+        parts = raw_line.split()
+        if len(parts) < 4:
+            raise ValueError(f"Invalid XYZ atom line in {xyz_path}: {raw_line}")
+        atom_type = int(parts[0])
+        element = type_elements[atom_type]
+        out.append(f"{element:>4} {float(parts[1]):15.8f} {float(parts[2]):15.8f} {float(parts[3]):15.8f}")
+    extxyz_path.write_text("\n".join(out) + "\n", encoding="utf-8")
+
+
 def _convert_pdb_outputs(system_dir: Path, config: Dict[str, Any]) -> None:
     pdb_gz = system_dir / "polymer.pdb.gz"
     pdb = system_dir / "polymer.pdb"
@@ -317,6 +384,11 @@ def _run_thermal_relax(system_dir: Path, row: Dict[str, Any], config: Dict[str, 
     (system_dir / "thermal_relax_obabel.log").write_text(proc.stdout, encoding="utf-8")
     if proc.returncode != 0 or not (system_dir / "relaxed.extxyz").exists():
         raise RuntimeError(f"Open Babel conversion failed for relaxed.xyz: {proc.stdout.strip()}")
+    _rewrite_extxyz_species_from_lammps_xyz(
+        system_dir / "relaxed.xyz",
+        system_dir / "relaxed.extxyz",
+        system_dir / "relaxed.data",
+    )
     _patch_extxyz_cell(system_dir / "relaxed.extxyz", _box_from_lammps_data(system_dir / "relaxed.data"))
     return {
         "lammps_thermal_relax_performed": True,

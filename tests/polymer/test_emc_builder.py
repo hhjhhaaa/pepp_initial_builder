@@ -7,6 +7,7 @@ from pepp_initial_builder.common.openbabel import _obabel_format
 from pepp_initial_builder.polymer.emc_builder import _recipe_text
 from pepp_initial_builder.polymer.emc_library import (
     _metadata_for_system,
+    _rewrite_extxyz_species_from_lammps_xyz,
     _thermal_relax_lock,
     metadata_is_relaxed,
     pure_library_row,
@@ -111,3 +112,36 @@ def test_thermal_relax_lock_blocks_concurrent_system_runs(tmp_path: Path):
         with pytest.raises(RuntimeError, match="already running"):
             with _thermal_relax_lock(tmp_path):
                 pass
+
+
+def test_relaxed_extxyz_rewrites_lammps_types_to_elements(tmp_path: Path):
+    data = tmp_path / "relaxed.data"
+    data.write_text(
+        "\n".join(
+            [
+                "LAMMPS data",
+                "",
+                "Masses",
+                "",
+                "1 12.011",
+                "2 1.008",
+                "",
+                "Atoms # full",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    xyz = tmp_path / "relaxed.xyz"
+    xyz.write_text("2\nAtoms. Timestep: 1\n1 0 0 0\n2 1 0 0\n", encoding="utf-8")
+    extxyz = tmp_path / "relaxed.extxyz"
+    extxyz.write_text(
+        '2\nLattice="1 0 0 0 1 0 0 0 1" Properties=species:S:1:pos:R:3 pbc="T T T"\n'
+        "H 0 0 0\nHe 1 0 0\n",
+        encoding="utf-8",
+    )
+    _rewrite_extxyz_species_from_lammps_xyz(xyz, extxyz, data)
+    text = extxyz.read_text(encoding="utf-8")
+    assert "\n   C" in text
+    assert "\n   H" in text
+    assert "He" not in text
