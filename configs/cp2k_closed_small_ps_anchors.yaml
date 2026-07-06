@@ -90,7 +90,7 @@ cp2k:
   max_scf: 2000
   scf_solver: OT
   outer_scf_max: 20
-  ot_preconditioner: FULL_ALL
+  ot_preconditioner: FULL_SINGLE_INVERSE
   ot_minimizer: DIIS
   ot_stepsize: 0.08
   ot_energy_gap: 0.001
