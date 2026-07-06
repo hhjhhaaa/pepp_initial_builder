@@ -139,24 +139,65 @@ def _cap_silica(elems_in: Sequence[str], coords_in: np.ndarray) -> Tuple[List[st
             continue
         existing_dirs = [_unit(coords[oi] - coords[si]) for oi in current]
         base = _unit(-(np.sum(existing_dirs, axis=0) if existing_dirs else coords[si] - centroid), coords[si] - centroid)
-        candidates = [base] + [_unit(base + 0.45 * t) for t in tetra] + [_unit(t) for t in tetra]
+        prefer_tetra_ring = len(existing_dirs) == 1 and missing >= 2
+        candidates = [] if prefer_tetra_ring else [base]
+        if existing_dirs:
+            primary = existing_dirs[0]
+            helper = np.array([1.0, 0.0, 0.0]) if abs(primary[0]) < 0.8 else np.array([0.0, 1.0, 0.0])
+            u = _unit(np.cross(primary, helper))
+            v = _unit(np.cross(primary, u))
+            ring_scale = math.sqrt(8.0 / 9.0)
+            for angle in (0.0, 120.0, 240.0):
+                a = math.radians(angle)
+                candidates.append(_unit((-1.0 / 3.0) * primary + ring_scale * (math.cos(a) * u + math.sin(a) * v)))
+        if not prefer_tetra_ring:
+            candidates += [_unit(base + 0.45 * t) for t in tetra]
+            candidates += [_unit(t) for t in tetra]
+            for z in np.linspace(-0.9, 0.9, 7):
+                radius = math.sqrt(max(0.0, 1.0 - float(z) ** 2))
+                for angle in np.linspace(0.0, 300.0, 6):
+                    a = math.radians(float(angle))
+                    candidates.append(_unit(np.array([radius * math.cos(a), radius * math.sin(a), float(z)])))
         used = 0
         pending_heavy: List[np.ndarray] = []
-        for cand in candidates:
-            if used >= missing:
+        chosen_dirs: List[np.ndarray] = []
+        while used < missing:
+            best: Tuple[float, np.ndarray, np.ndarray, np.ndarray] | None = None
+            for cand in candidates:
+                if any(float(np.dot(cand, prev)) > 0.85 for prev in chosen_dirs):
+                    continue
+                o_pos = coords[si] + 1.62 * cand
+                other_oxygen = [
+                    coords[i]
+                    for i, other in enumerate(elems)
+                    if other == "O"
+                ] + pending_heavy
+                min_oo = float("inf")
+                if other_oxygen:
+                    min_oo = float(np.min(np.linalg.norm(np.array(other_oxygen) - o_pos, axis=1)))
+                    if min_oo < 2.05:
+                        continue
+                other_heavy = [
+                    coords[i]
+                    for i, other in enumerate(elems)
+                    if other != "H" and i != si
+                ] + pending_heavy
+                min_heavy = float("inf")
+                if other_heavy:
+                    min_heavy = float(np.min(np.linalg.norm(np.array(other_heavy) - o_pos, axis=1)))
+                    if min_heavy < 1.35:
+                        continue
+                score = min(min_oo, 3.0) + 0.25 * min(min_heavy, 3.0)
+                h_pos = o_pos + 0.96 * cand
+                if best is None or score > best[0]:
+                    best = (score, cand, o_pos, h_pos)
+            if best is None:
                 break
-            o_pos = coords[si] + 1.62 * cand
-            other_heavy = [
-                coords[i]
-                for i, other in enumerate(elems)
-                if other != "H" and i != si
-            ] + pending_heavy
-            if other_heavy and float(np.min(np.linalg.norm(np.array(other_heavy) - o_pos, axis=1))) < 1.45:
-                continue
-            h_pos = o_pos + 0.96 * cand
+            _score, cand, o_pos, h_pos = best
             new_elems.extend(["O", "H"])
             new_coords.extend([o_pos, h_pos])
             pending_heavy.append(o_pos)
+            chosen_dirs.append(cand)
             added_oh += 1
             used += 1
 
@@ -271,11 +312,12 @@ def _place_fragments(silica_elems: Sequence[str], silica_coords: np.ndarray, fra
     min_poly_silica = min_cross_distance(elems, coords, polymer_start) if fragments else float("inf")
     min_all = _min_all_distance(elems, coords)
     min_heavy = _min_heavy_heavy_distance(elems, coords)
+    min_oo = _min_oxygen_oxygen_distance(elems, coords)
     mins = coords.min(axis=0)
     coords = coords - mins + 7.0
     extent = coords.max(axis=0) + 7.0
     box = tuple(float(max(float(box[i]), extent[i])) for i in range(3))
-    return elems, coords, box, {"min_polymer_silica_distance_A": f"{min_poly_silica:.3f}", "min_all_pair_distance_A": f"{min_all:.3f}", "min_heavy_heavy_distance_A": f"{min_heavy:.3f}"}
+    return elems, coords, box, {"min_polymer_silica_distance_A": f"{min_poly_silica:.3f}", "min_all_pair_distance_A": f"{min_all:.3f}", "min_heavy_heavy_distance_A": f"{min_heavy:.3f}", "min_oxygen_oxygen_distance_A": f"{min_oo:.3f}"}
 
 
 def min_cross_distance(elems: Sequence[str], coords: np.ndarray, split: int) -> float:
@@ -329,6 +371,15 @@ def _min_heavy_heavy_distance(elems: Sequence[str], coords: np.ndarray) -> float
     value = float("inf")
     for left, i in enumerate(heavy):
         for j in heavy[left + 1 :]:
+            value = min(value, float(np.linalg.norm(coords[i] - coords[j])))
+    return value
+
+
+def _min_oxygen_oxygen_distance(elems: Sequence[str], coords: np.ndarray) -> float:
+    oxygens = [i for i, elem in enumerate(elems) if elem == "O"]
+    value = float("inf")
+    for left, i in enumerate(oxygens):
+        for j in oxygens[left + 1 :]:
             value = min(value, float(np.linalg.norm(coords[i] - coords[j])))
     return value
 
@@ -411,7 +462,7 @@ def build_closed_small_anchors(config: Dict[str, Any], mode: str = "tiny") -> Pa
         extxyz_path = structure_dir / "structure.extxyz"
         _write_extxyz(extxyz_path, elems, coords, local_box, metadata)
         contact_ok = not names or float(geom_meta["min_polymer_silica_distance_A"]) <= 3.6
-        status = "available" if contact_ok and silica_meta["undercoordinated_Si_after_capping"] == 0 and silica_meta["uncapped_O_after_capping"] == 0 and float(geom_meta["min_all_pair_distance_A"]) >= 0.65 and float(geom_meta["min_heavy_heavy_distance_A"]) >= 1.35 else "failed_geometry_or_capping_gate"
+        status = "available" if contact_ok and silica_meta["undercoordinated_Si_after_capping"] == 0 and silica_meta["uncapped_O_after_capping"] == 0 and float(geom_meta["min_all_pair_distance_A"]) >= 0.65 and float(geom_meta["min_heavy_heavy_distance_A"]) >= 1.35 and float(geom_meta["min_oxygen_oxygen_distance_A"]) >= 2.05 else "failed_geometry_or_capping_gate"
         row = {
             "aimd_structure_id": anchor_id,
             "status": status,

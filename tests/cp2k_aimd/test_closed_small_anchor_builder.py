@@ -1,6 +1,6 @@
 import numpy as np
 
-from pepp_initial_builder.cp2k_aimd.closed_small_anchor_builder import _cap_silica, _min_heavy_heavy_distance
+from pepp_initial_builder.cp2k_aimd.closed_small_anchor_builder import _cap_silica, _min_heavy_heavy_distance, _min_oxygen_oxygen_distance
 
 
 def test_multi_oh_capping_avoids_close_oxygen_pairs():
@@ -18,3 +18,4 @@ def test_multi_oh_capping_avoids_close_oxygen_pairs():
     assert meta["undercoordinated_Si_after_capping"] == 0
     assert meta["uncapped_O_after_capping"] == 0
     assert _min_heavy_heavy_distance(capped_elems, capped_coords) >= 1.35
+    assert _min_oxygen_oxygen_distance(capped_elems, capped_coords) >= 2.05
