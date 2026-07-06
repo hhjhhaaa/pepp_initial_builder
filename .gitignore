@@ -2,6 +2,9 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 *.egg-info/
+*.out
+*.log
+*.lammps
 
 # Large trajectories / binary data
 *.traj
@@ -13,6 +16,16 @@ __pycache__/
 *.hdf5
 *.npy
 *.npz
+*.data
+*.params
+*.pdb.gz
+*.psf.gz
+*.emc.gz
+*.vmd
+thermal_relax.log
+thermal_relax_obabel.log
+emc_setup.log
+emc_build.log
 
 # CP2K heavy outputs
 cp2k.out
@@ -32,6 +45,7 @@ prod.lammpstrj
 
 # Generated data and structure folders
 data/
+data/structure_library/
 data/systems/*/
 data/polymer/systems/*/
 data/pore/porems_models/*/

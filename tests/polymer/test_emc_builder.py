@@ -1,5 +1,9 @@
+from pathlib import Path
+
 from pepp_initial_builder.common.config import load_config
+from pepp_initial_builder.common.openbabel import _obabel_format
 from pepp_initial_builder.polymer.emc_builder import _recipe_text
+from pepp_initial_builder.polymer.emc_library import render_pure_recipe
 
 
 def test_emc_recipe_uses_pcff_and_no_python_builder():
@@ -29,3 +33,16 @@ def test_emc_recipe_supports_pp():
         "initial_packing_density_g_cm3": 0.85,
     }
     assert "*C(C)C*" in _recipe_text(row, cfg)
+
+
+def test_emc_library_recipes_cover_pe_pp_ps():
+    cfg = load_config("configs/polymer.yaml")
+    base = {"system_id": "x", "n_chains": 2, "repeat_units": 12, "ntotal": 500}
+    assert "*CC*" in render_pure_recipe({**base, "component": "PE"}, cfg)
+    assert "*C(C)C*" in render_pure_recipe({**base, "component": "PP"}, cfg)
+    assert "*C(c1ccccc1)C*" in render_pure_recipe({**base, "component": "PS"}, cfg)
+
+
+def test_openbabel_format_mapping_supports_extxyz_and_pdb_gz():
+    assert _obabel_format(Path("polymer.extxyz")) == "exyz"
+    assert _obabel_format(Path("polymer.pdb.gz")) == "pdb"

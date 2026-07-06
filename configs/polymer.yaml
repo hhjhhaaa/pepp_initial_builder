@@ -1,6 +1,11 @@
 paths:
   root: .
   systems_dir: data/polymer/systems
+  structure_library_dir: data/structure_library
+  mlff_direct_structures_dir: data/structure_library/mlff_direct
+  aimd_structures_dir: data/structure_library/aimd
+  finetuned_mlff_structures_dir: data/structure_library/fine_tuned_mlff
+  emc_library_dir: data/structure_library/mlff_direct/emc_polymer
   matrix_dir: data/polymer/matrix
   exports_dir: data/exports
   logs_dir: outputs/logs
@@ -34,7 +39,7 @@ tools:
   known_emc_root: ~/software/EMC
   known_packmol_executable:
   known_lammps_executable:
-  known_openbabel_executable:
+  known_openbabel_executable: /home/jinhao/miniforge3/envs/pepp-graph-spib/bin/obabel
 builder:
   representation: emc_pcff_all_atom
   chain_conformation: emc_generated
@@ -49,6 +54,51 @@ emc:
   build_timeout_seconds: 900
   preferred_force_fields: [PCFF]
   save_discovery_report: true
+emc_library:
+  task_lane: mlff_direct
+  intended_runner: zero_shot_mace_mh0
+  output_label_status: provisional MLFF labels
+  force_field: charmm/c36a/cgenff
+  pilot_systems:
+    - system_id: PE100_N50_C10_emc_seed1
+      component: PE
+      n_chains: 10
+      repeat_units: 50
+      ntotal: 3200
+      density_g_cm3: 0.855
+      temperature_K: 523.0
+      task_lane: mlff_direct
+    - system_id: PP100_N30_C10_emc_seed1
+      component: PP
+      n_chains: 10
+      repeat_units: 30
+      ntotal: 2800
+      density_g_cm3: 0.85
+      temperature_K: 523.0
+      task_lane: mlff_direct
+    - system_id: PS100_N12_C16_emc_seed1
+      component: PS
+      n_chains: 16
+      repeat_units: 12
+      ntotal: 3200
+      density_g_cm3: 1.00
+      temperature_K: 523.0
+      task_lane: mlff_direct
+  thermal_relax:
+    enabled: true
+    protocol: emc_polymer_lammps_thermal_relax_v1
+    timestep_fs: 1.0
+    tdamp_fs: 100.0
+    pdamp_fs: 1000.0
+    anneal_temperature_K: 650.0
+    warmup_steps: 10000
+    nvt_heat_steps: 50000
+    nvt_cool_steps: 50000
+    npt_steps: 200000
+    nvt_settle_steps: 100000
+    thermo_every: 1000
+    dump_every: 10000
+    timeout_seconds: 21600
 packmol:
   enabled: true
   tolerance_A: 2.0
