@@ -34,7 +34,14 @@ CP2K_CMD=${{CP2K_CMD:-{hpc['cp2k_command_default']}}}
 {selected_note}
 
 JOB_DIRS=({job_dirs})
-JOB_DIR="${{JOB_DIRS[$SLURM_ARRAY_TASK_ID]}}"
+BASE_JOB_DIR="${{JOB_DIRS[$SLURM_ARRAY_TASK_ID]}}"
+RUN_STAMP="${{PEPP_CP2K_RUN_STAMP:-$(date +%Y%m%d_%H%M%S)_${{SLURM_JOB_ID}}_${{SLURM_ARRAY_TASK_ID}}}}"
+JOB_DIR="$BASE_JOB_DIR/runs/$RUN_STAMP"
+mkdir -p "$JOB_DIR"
+cp "$BASE_JOB_DIR"/input.inp "$BASE_JOB_DIR"/coords.inc "$BASE_JOB_DIR"/cell.inc "$BASE_JOB_DIR"/coords.xyz "$JOB_DIR"/
+if [ -f "$BASE_JOB_DIR/job_metadata.yaml" ]; then
+  cp "$BASE_JOB_DIR/job_metadata.yaml" "$JOB_DIR"/
+fi
 cd "$JOB_DIR"
 "$CP2K_CMD" -i input.inp -o cp2k.out
 """

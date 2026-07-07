@@ -30,6 +30,8 @@ def test_hpc_job_has_module_placeholder(tmp_path):
     assert '# export CP2K_DATA_DIR="__SET_CP2K_DATA_DIR_ON_HPC__"' in text
     assert 'export OMPI_MCA_btl="${OMPI_MCA_btl:-^openib}"' in text
     assert "CP2K_CMD=${CP2K_CMD:-cp2k.psmp}" in text
+    assert 'RUN_STAMP="${PEPP_CP2K_RUN_STAMP:-$(date +%Y%m%d_%H%M%S)_${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}}"' in text
+    assert 'JOB_DIR="$BASE_JOB_DIR/runs/$RUN_STAMP"' in text
     assert (tmp_path / "slurm" / "submit_cp2k_sp_tiny.sh").exists()
     assert (tmp_path / "slurm" / "submit_cp2k_short_aimd_tiny.sh").exists()
     assert (tmp_path / "slurm" / "submit_cp2k_seed_tiny.sh").exists()

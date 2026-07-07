@@ -105,6 +105,18 @@ def find_first(job_dir: Path, patterns: Sequence[str]) -> Path | None:
     return None
 
 
+def latest_completed_run_dir(job_dir: Path) -> Path:
+    if (job_dir / "cp2k.out").exists():
+        return job_dir
+    runs_dir = job_dir / "runs"
+    if not runs_dir.exists():
+        return job_dir
+    candidates = [path for path in runs_dir.iterdir() if path.is_dir() and (path / "cp2k.out").exists()]
+    if not candidates:
+        return job_dir
+    return max(candidates, key=lambda path: (path / "cp2k.out").stat().st_mtime)
+
+
 def unit_factors(config: Dict[str, Any]):
     units = config.get("units", {})
     if units.get("output_energy", "eV") != "eV" or units.get("output_forces", "eV_per_A") != "eV_per_A":
@@ -128,7 +140,8 @@ def parse_cp2k_outputs(config: Dict[str, Any]) -> Path:
         project = row.get("cp2k_project") or f"{row['aimd_structure_id']}_{row['label_mode']}"
         summary = {"status": "not_run_no_cp2k_output", "usable_frame_count": 0, "failure_reason": "cp2k.out missing", "detected_cp2k_out": "", "detected_position_file": "", "detected_force_file": "", "detected_energy_file": "", "parser_mode": row.get("cp2k_run_type", "ENERGY_FORCE" if row.get("label_mode") == "sp_force" else "MD"), "n_position_frames": 0, "n_force_frames": 0, "n_energy_frames": 0, "n_frames_written": 0, "frame_count_mismatch": False}
         frames = out_dir / "frames.extxyz"
-        cp2k_out = job_dir / "cp2k.out"
+        run_dir = latest_completed_run_dir(job_dir)
+        cp2k_out = run_dir / "cp2k.out"
         if cp2k_out.exists():
             summary["detected_cp2k_out"] = str(cp2k_out)
             text = cp2k_out.read_text(encoding="utf-8", errors="ignore")
@@ -138,9 +151,9 @@ def parse_cp2k_outputs(config: Dict[str, Any]) -> Path:
             elif not normal_end:
                 summary.update({"status": "failed_cp2k", "failure_reason": health_reason})
             elif row.get("label_mode") == "short_aimd" or row.get("cp2k_run_type") == "MD":
-                pos_file = find_first(job_dir, [f"{project}-pos-1.xyz", f"{project}-pos-*.xyz", "*pos*.xyz", "*POS*.xyz"])
-                frc_file = find_first(job_dir, [f"{project}-frc-1.xyz", f"{project}-frc-*.xyz", "*frc*.xyz", "*FRC*.xyz", "*forces*.xyz", "*FORCES*.xyz"])
-                ene_file = find_first(job_dir, [f"{project}-1.ener", f"{project}-*.ener", "*.ener", "*.ENER"])
+                pos_file = find_first(run_dir, [f"{project}-pos-1.xyz", f"{project}-pos-*.xyz", "*pos*.xyz", "*POS*.xyz"])
+                frc_file = find_first(run_dir, [f"{project}-frc-1.xyz", f"{project}-frc-*.xyz", "*frc*.xyz", "*FRC*.xyz", "*forces*.xyz", "*FORCES*.xyz"])
+                ene_file = find_first(run_dir, [f"{project}-1.ener", f"{project}-*.ener", "*.ener", "*.ENER"])
                 pos_frames = read_xyz_frames(pos_file) if pos_file else []
                 frc_frames = read_xyz_frames(frc_file) if frc_file else []
                 energies_h = read_energies(ene_file) if ene_file else []
@@ -148,7 +161,7 @@ def parse_cp2k_outputs(config: Dict[str, Any]) -> Path:
                 summary.update({"detected_position_file": str(pos_file or ""), "detected_force_file": str(frc_file or ""), "detected_energy_file": str(ene_file or ""), "n_position_frames": len(pos_frames), "n_force_frames": len(frc_frames), "n_energy_frames": len(energies_h), "n_frames_written": matched, "frame_count_mismatch": len({len(pos_frames), len(frc_frames), len(energies_h)}) > 1})
                 if matched > 0:
                     elems = pos_frames[0][0]
-                    _, _, box = read_xyz_like(job_dir / "coords.xyz")
+                    _, _, box = read_xyz_like(run_dir / "coords.xyz")
                     positions = [frame[1] for frame in pos_frames[:matched]]
                     forces = [[(x * force_factor, y * force_factor, z * force_factor) for x, y, z in frame[1]] for frame in frc_frames[:matched]]
                     energies = [x * energy_factor for x in energies_h[:matched]]
@@ -158,14 +171,14 @@ def parse_cp2k_outputs(config: Dict[str, Any]) -> Path:
                 else:
                     summary.update({"status": "failed_cp2k", "failure_reason": "missing_matched_md_position_force_energy_frames"})
             else:
-                elems, coords, box = read_xyz_like(job_dir / "coords.xyz")
+                elems, coords, box = read_xyz_like(run_dir / "coords.xyz")
                 energy_h = parse_energy_hartree(text)
-                force_file = find_first(job_dir, [f"{project}-frc-1.xyz", f"{project}-frc-*.xyz", "forces.xyz", "*frc*.xyz", "*FRC*.xyz", "*forces*.xyz", "*FORCES*.xyz"])
+                force_file = find_first(run_dir, [f"{project}-frc-1.xyz", f"{project}-frc-*.xyz", "forces.xyz", "*frc*.xyz", "*FRC*.xyz", "*forces*.xyz", "*FORCES*.xyz"])
                 force_frames = read_xyz_frames(force_file) if force_file else []
                 out_forces = parse_forces_au_from_cp2k_out(text, elems) if not force_frames else []
                 n_force_frames = len(force_frames) if force_frames else (1 if out_forces else 0)
                 detected_force = str(force_file or (cp2k_out if out_forces else ""))
-                summary.update({"detected_position_file": str(job_dir / "coords.xyz"), "detected_force_file": detected_force, "detected_energy_file": str(cp2k_out), "n_position_frames": 1, "n_force_frames": n_force_frames, "n_energy_frames": 1 if energy_h is not None else 0})
+                summary.update({"detected_position_file": str(run_dir / "coords.xyz"), "detected_force_file": detected_force, "detected_energy_file": str(cp2k_out), "n_position_frames": 1, "n_force_frames": n_force_frames, "n_energy_frames": 1 if energy_h is not None else 0})
                 if energy_h is not None and (force_frames or out_forces):
                     force_values = force_frames[-1][1] if force_frames else out_forces
                     if len(force_values) == len(elems):
