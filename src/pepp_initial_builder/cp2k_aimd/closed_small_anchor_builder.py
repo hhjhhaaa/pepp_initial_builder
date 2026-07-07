@@ -295,12 +295,18 @@ def _place_fragments(silica_elems: Sequence[str], silica_coords: np.ndarray, fra
                 split = len(elems)
                 frag_silica = _min_between(silica_elems, silica_coords, frag_elems, candidate)
                 frag_existing = min_cross_distance(trial_elems, trial, split)
+                frag_existing_all = _min_all_cross_distance(elems, coords, frag_elems, candidate)
                 frag_existing_non_hh = _min_non_hh_between(elems, coords, frag_elems, candidate)
-                score = abs(frag_silica - 2.8) + (0.0 if frag_existing >= 1.15 else 20.0 * (1.15 - frag_existing)) + (0.0 if frag_existing_non_hh >= 0.75 else 20.0 * (0.75 - frag_existing_non_hh))
+                score = (
+                    abs(frag_silica - 2.8)
+                    + (0.0 if frag_existing >= 1.15 else 20.0 * (1.15 - frag_existing))
+                    + (0.0 if frag_existing_non_hh >= 1.05 else 30.0 * (1.05 - frag_existing_non_hh))
+                    + (0.0 if frag_existing_all >= 1.00 else 30.0 * (1.00 - frag_existing_all))
+                )
                 if score < best_score:
                     best = candidate
                     best_score = score
-                if 2.15 <= frag_silica <= 3.35 and frag_existing >= 1.15 and frag_existing_non_hh >= 0.75:
+                if 2.15 <= frag_silica <= 3.35 and frag_existing >= 1.15 and frag_existing_non_hh >= 1.05 and frag_existing_all >= 1.00:
                     placed = candidate
                     break
             if placed is not None:
@@ -311,13 +317,14 @@ def _place_fragments(silica_elems: Sequence[str], silica_coords: np.ndarray, fra
         coords = np.vstack([coords, placed])
     min_poly_silica = min_cross_distance(elems, coords, polymer_start) if fragments else float("inf")
     min_all = _min_all_distance(elems, coords)
+    min_all_atoms = _min_all_atom_distance(elems, coords)
     min_heavy = _min_heavy_heavy_distance(elems, coords)
     min_oo = _min_oxygen_oxygen_distance(elems, coords)
     mins = coords.min(axis=0)
     coords = coords - mins + 7.0
     extent = coords.max(axis=0) + 7.0
     box = tuple(float(max(float(box[i]), extent[i])) for i in range(3))
-    return elems, coords, box, {"min_polymer_silica_distance_A": f"{min_poly_silica:.3f}", "min_all_pair_distance_A": f"{min_all:.3f}", "min_heavy_heavy_distance_A": f"{min_heavy:.3f}", "min_oxygen_oxygen_distance_A": f"{min_oo:.3f}"}
+    return elems, coords, box, {"min_polymer_silica_distance_A": f"{min_poly_silica:.3f}", "min_all_pair_distance_A": f"{min_all:.3f}", "min_all_atom_distance_A": f"{min_all_atoms:.3f}", "min_heavy_heavy_distance_A": f"{min_heavy:.3f}", "min_oxygen_oxygen_distance_A": f"{min_oo:.3f}"}
 
 
 def min_cross_distance(elems: Sequence[str], coords: np.ndarray, split: int) -> float:
@@ -330,6 +337,12 @@ def min_cross_distance(elems: Sequence[str], coords: np.ndarray, split: int) -> 
 
 def _min_between(left_elems: Sequence[str], left_coords: np.ndarray, right_elems: Sequence[str], right_coords: np.ndarray) -> float:
     return _min_pair_between(left_elems, left_coords, right_elems, right_coords)[0]
+
+
+def _min_all_cross_distance(left_elems: Sequence[str], left_coords: np.ndarray, right_elems: Sequence[str], right_coords: np.ndarray) -> float:
+    if not left_elems or not right_elems:
+        return float("inf")
+    return min(float(np.linalg.norm(left_coords[i] - right_coords[j])) for i in range(len(left_elems)) for j in range(len(right_elems)))
 
 
 def _min_non_hh_between(left_elems: Sequence[str], left_coords: np.ndarray, right_elems: Sequence[str], right_coords: np.ndarray) -> float:
@@ -362,6 +375,14 @@ def _min_all_distance(elems: Sequence[str], coords: np.ndarray) -> float:
         for j in range(i + 1, len(elems)):
             if elems[i] == "H" and elems[j] == "H":
                 continue
+            value = min(value, float(np.linalg.norm(coords[i] - coords[j])))
+    return value
+
+
+def _min_all_atom_distance(elems: Sequence[str], coords: np.ndarray) -> float:
+    value = float("inf")
+    for i in range(len(elems)):
+        for j in range(i + 1, len(elems)):
             value = min(value, float(np.linalg.norm(coords[i] - coords[j])))
     return value
 
