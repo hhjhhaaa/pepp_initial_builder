@@ -300,8 +300,10 @@ def _run_packmol(input_path: Path, executable: str, timeout_seconds: int) -> Non
 
 
 def _packmol_success(log_path: str) -> str:
+    if not log_path:
+        return "not_applicable"
     path = Path(log_path)
-    if not path.exists():
+    if not path.is_file():
         return "not_applicable"
     return "success" if "Success!" in path.read_text(encoding="utf-8", errors="ignore") else "failed"
 
@@ -326,9 +328,9 @@ def _write_manual_structure_review(config: Dict[str, Any], review_rows: List[Dic
         "",
         "Packmol 参数说明:",
         f"- packmol_tolerance_A = {config.get('closed_small_anchors', {}).get('packmol_tolerance_A')}: Packmol 原子间最小容忍距离，单位 A。",
-        f"- packmol_surface_xy_margin_A = {config.get('closed_small_anchors', {}).get('packmol_surface_xy_margin_A')}: 聚合物打包盒相对 SiO2 patch 在 X/Y 方向额外扩展的距离，单位 A。",
-        f"- packmol_surface_z_gap_from_silica_top_A = {config.get('closed_small_anchors', {}).get('packmol_surface_z_gap_from_silica_top_A')}: 聚合物打包盒底部距离 SiO2 最高原子的初始 Z 间隙，单位 A。",
-        f"- packmol_surface_z_packing_thickness_A = {config.get('closed_small_anchors', {}).get('packmol_surface_z_packing_thickness_A')}: 聚合物在表面上方可用的 Z 向打包厚度，单位 A。",
+        f"- packmol_lateral_padding_A = {config.get('closed_small_anchors', {}).get('packmol_lateral_padding_A')}: 聚合物打包盒相对 SiO2 patch 在 X/Y 方向额外扩展的距离，单位 A；名字里的 lateral 指表面平面内横向范围。",
+        f"- packmol_surface_gap_A = {config.get('closed_small_anchors', {}).get('packmol_surface_gap_A')}: 聚合物打包盒底部距离 SiO2 最高原子的初始 Z 间隙，单位 A；它控制初始结构不要贴得过近。",
+        f"- packmol_surface_layer_thickness_A = {config.get('closed_small_anchors', {}).get('packmol_surface_layer_thickness_A')}: 聚合物在表面上方可用的 Z 向打包厚度，单位 A；它控制初始结构不要离表面过远。",
         f"- packmol_maxit = {config.get('closed_small_anchors', {}).get('packmol_maxit')}: Packmol 优化最大迭代数。",
         f"- packmol_timeout_seconds = {config.get('closed_small_anchors', {}).get('packmol_timeout_seconds')}: 单个 Packmol 打包任务超时时间，单位秒。",
         "",
@@ -364,9 +366,9 @@ def _write_surface_packmol_input(packmol_dir: Path, silica: AtomSet, fragments: 
     mins = coords.min(axis=0)
     maxs = coords.max(axis=0)
     top_z = float(maxs[2])
-    padding = float(settings["packmol_surface_xy_margin_A"])
-    gap = float(settings["packmol_surface_z_gap_from_silica_top_A"])
-    layer = float(settings["packmol_surface_z_packing_thickness_A"])
+    padding = float(settings["packmol_lateral_padding_A"])
+    gap = float(settings["packmol_surface_gap_A"])
+    layer = float(settings["packmol_surface_layer_thickness_A"])
     xlo, xhi = float(mins[0] - padding), float(maxs[0] + padding)
     ylo, yhi = float(mins[1] - padding), float(maxs[1] + padding)
     zlo, zhi = top_z + gap, top_z + gap + layer
