@@ -25,6 +25,7 @@ tools:
   porems_path_hint:
   known_emc_root: ~/software/EMC
   known_openbabel_executable: /public/home/jinhao.hu/.conda/envs/peppmixure/bin/obabel
+  packmol_executable: /public/home/jinhao.hu/.conda/envs/peppmixure/bin/packmol
   ase_required: true
   cp2k_not_required_here: false
   mlff_not_required_here: true
@@ -60,6 +61,12 @@ closed_small_anchors:
   max_silica_atoms_before_capping: 90
   cell_margin_A: 8.0
   emc_chain_length_backbone: 32
+  packmol_tolerance_A: 1.85
+  packmol_maxit: 5000
+  packmol_timeout_seconds: 300
+  packmol_lateral_padding_A: 7.0
+  packmol_surface_gap_A: 2.1
+  packmol_surface_layer_thickness_A: 7.5
   tiny_max_structures: 9
   pilot_max_structures: 9
   main_max_structures: 9

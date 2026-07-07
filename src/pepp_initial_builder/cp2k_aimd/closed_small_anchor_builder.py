@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import os
+import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Sequence, Tuple
 
@@ -249,72 +250,112 @@ def _make_emc_fragment(config: Dict[str, Any], chain_type: str, chain_length: in
     return _center_fragment(*_read_xyz(template["xyz"]))
 
 
-def _rotate_z(coords: np.ndarray, degrees: float) -> np.ndarray:
-    a = math.radians(degrees)
-    r = np.array([[math.cos(a), -math.sin(a), 0.0], [math.sin(a), math.cos(a), 0.0], [0.0, 0.0, 1.0]])
-    return coords @ r.T
+def _packmol_executable(config: Dict[str, Any]) -> str:
+    tools = config.get("tools", {})
+    executable = tools.get("packmol_executable")
+    if not executable:
+        raise RuntimeError("tools.packmol_executable is required")
+    candidate = Path(str(executable)).expanduser()
+    if not candidate.exists():
+        raise RuntimeError(f"Configured Packmol executable does not exist: {candidate}")
+    return str(candidate)
 
 
-def _lateral_slots(count: int) -> List[Tuple[float, float]]:
-    if count <= 1:
-        return [(0.0, 0.0)]
-    if count == 2:
-        return [(0.0, -7.0), (0.0, 7.0)]
-    if count == 3:
-        return [(0.0, -9.0), (0.0, 0.0), (0.0, 9.0)]
-    return [(0.0, -10.5), (0.0, -3.5), (0.0, 3.5), (0.0, 10.5)]
+def _write_packmol_xyz(path: Path, elems: Sequence[str], coords: np.ndarray) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        handle.write(f"{len(elems)}\n")
+        handle.write("generated_for_packmol\n")
+        for elem, xyz in zip(elems, coords):
+            handle.write(f"{elem} {xyz[0]:.10f} {xyz[1]:.10f} {xyz[2]:.10f}\n")
 
 
-def _place_fragments(silica_elems: Sequence[str], silica_coords: np.ndarray, fragments: Sequence[Tuple[str, AtomSet]], box: Sequence[float]) -> Tuple[List[str], np.ndarray, Tuple[float, float, float], Dict[str, Any]]:
-    elems = list(silica_elems)
-    coords = np.array(silica_coords, dtype=float).copy()
-    top_z = float(np.max(coords[:, 2]))
-    center = np.array([box[0] / 2.0, box[1] / 2.0, 0.0], dtype=float)
-    base_slots = _lateral_slots(len(fragments))
-    lateral_jitter = [(0.0, 0.0), (-2.5, 0.0), (2.5, 0.0), (0.0, -2.5), (0.0, 2.5), (-2.5, -2.5), (2.5, 2.5)]
-    z_offsets = [1.6, 2.0, 2.4, 2.8, 3.2, 3.8]
-    polymer_start = len(elems)
-    for idx, (_name, (frag_elems, frag_coords)) in enumerate(fragments):
-        rot = _rotate_z(frag_coords, idx * 11.0)
-        minz = float(np.min(rot[:, 2]))
-        placed = None
-        best = None
-        best_score = float("inf")
-        slot_x, slot_y = base_slots[idx % len(base_slots)]
-        for zoff in z_offsets:
-            for dx, dy in lateral_jitter:
-                xoff, yoff = slot_x + dx, slot_y + dy
-                candidate = rot + np.array([center[0] + xoff, center[1] + yoff, top_z + zoff - minz])
-                pair_dist, si_i, frag_i = _min_pair_between(silica_elems, silica_coords, frag_elems, candidate)
-                if math.isfinite(pair_dist) and pair_dist > 1.0e-8:
-                    target = 2.8
-                    direction = (silica_coords[si_i] - candidate[frag_i]) / pair_dist
-                    candidate = candidate + direction * (pair_dist - target)
-                trial = np.vstack([coords, candidate])
-                trial_elems = elems + list(frag_elems)
-                split = len(elems)
-                frag_silica = _min_between(silica_elems, silica_coords, frag_elems, candidate)
-                frag_existing = min_cross_distance(trial_elems, trial, split)
-                frag_existing_all = _min_all_cross_distance(elems, coords, frag_elems, candidate)
-                frag_existing_non_hh = _min_non_hh_between(elems, coords, frag_elems, candidate)
-                score = (
-                    abs(frag_silica - 2.8)
-                    + (0.0 if frag_existing >= 1.15 else 20.0 * (1.15 - frag_existing))
-                    + (0.0 if frag_existing_non_hh >= 1.05 else 30.0 * (1.05 - frag_existing_non_hh))
-                    + (0.0 if frag_existing_all >= 1.00 else 30.0 * (1.00 - frag_existing_all))
-                )
-                if score < best_score:
-                    best = candidate
-                    best_score = score
-                if 2.15 <= frag_silica <= 3.35 and frag_existing >= 1.15 and frag_existing_non_hh >= 1.05 and frag_existing_all >= 1.00:
-                    placed = candidate
-                    break
-            if placed is not None:
-                break
-        if placed is None:
-            placed = best if best is not None else rot + np.array([center[0], center[1], top_z + (idx + 1) * 3.2 - minz])
-        elems.extend(frag_elems)
-        coords = np.vstack([coords, placed])
+def _run_packmol(input_path: Path, executable: str, timeout_seconds: int) -> None:
+    log_path = input_path.parent / "packmol.log"
+    with input_path.open("rb") as stdin, log_path.open("wb") as stdout:
+        proc = subprocess.run([executable], stdin=stdin, stdout=stdout, stderr=subprocess.STDOUT, cwd=input_path.parent, timeout=timeout_seconds, check=False)
+    text = log_path.read_text(encoding="utf-8", errors="ignore")
+    if proc.returncode != 0 or "Success!" not in text:
+        raise RuntimeError(f"Packmol failed for {input_path}; see {log_path}")
+
+
+def _write_surface_packmol_input(packmol_dir: Path, silica: AtomSet, fragments: Sequence[Tuple[str, AtomSet]], settings: Dict[str, Any], seed: int) -> Path:
+    silica_elems, silica_coords = silica
+    template_dir = packmol_dir / "templates"
+    silica_xyz = template_dir / "fixed_h_capped_silica.xyz"
+    _write_packmol_xyz(silica_xyz, silica_elems, silica_coords)
+
+    coords = np.array(silica_coords, dtype=float)
+    mins = coords.min(axis=0)
+    maxs = coords.max(axis=0)
+    top_z = float(maxs[2])
+    padding = float(settings.get("packmol_lateral_padding_A", 7.0))
+    gap = float(settings.get("packmol_surface_gap_A", 2.1))
+    layer = float(settings.get("packmol_surface_layer_thickness_A", 7.5))
+    xlo, xhi = float(mins[0] - padding), float(maxs[0] + padding)
+    ylo, yhi = float(mins[1] - padding), float(maxs[1] + padding)
+    zlo, zhi = top_z + gap, top_z + gap + layer
+
+    lines = [
+        f"tolerance {float(settings.get('packmol_tolerance_A', 1.85)):.6f}",
+        "filetype xyz",
+        f"output {packmol_dir / 'packed_surface.xyz'}",
+        f"seed {int(seed)}",
+        f"maxit {int(settings.get('packmol_maxit', 5000))}",
+        "",
+        f"structure {silica_xyz}",
+        "  number 1",
+        "  fixed 0.0 0.0 0.0 0.0 0.0 0.0",
+        "end structure",
+        "",
+    ]
+    for idx, (name, (frag_elems, frag_coords)) in enumerate(fragments, start=1):
+        template = template_dir / f"fragment_{idx:02d}_{name}.xyz"
+        _write_packmol_xyz(template, frag_elems, frag_coords)
+        lines.extend(
+            [
+                f"structure {template}",
+                "  number 1",
+                f"  inside box {xlo:.6f} {ylo:.6f} {zlo:.6f} {xhi:.6f} {yhi:.6f} {zhi:.6f}",
+                "end structure",
+                "",
+            ]
+        )
+    packmol_dir.mkdir(parents=True, exist_ok=True)
+    input_path = packmol_dir / "packmol.inp"
+    input_path.write_text("\n".join(lines), encoding="utf-8")
+    return input_path
+
+
+def _place_fragments(
+    silica_elems: Sequence[str],
+    silica_coords: np.ndarray,
+    fragments: Sequence[Tuple[str, AtomSet]],
+    box: Sequence[float],
+    config: Dict[str, Any],
+    structure_dir: Path,
+    seed: int,
+) -> Tuple[List[str], np.ndarray, Tuple[float, float, float], Dict[str, Any]]:
+    polymer_start = len(silica_elems)
+    if fragments:
+        packmol_dir = structure_dir / "packmol"
+        settings = config.get("closed_small_anchors", {})
+        input_path = _write_surface_packmol_input(packmol_dir, (list(silica_elems), np.array(silica_coords, dtype=float)), fragments, settings, seed)
+        output_path = packmol_dir / "packed_surface.xyz"
+        _run_packmol(input_path, _packmol_executable(config), int(settings.get("packmol_timeout_seconds", 300)))
+        if not output_path.exists():
+            raise RuntimeError(f"Packmol reported success but did not write {output_path}")
+        elems, coords = _read_xyz(output_path)
+        packing_meta: Dict[str, Any] = {
+            "packing_method": "packmol_surface_box",
+            "packmol_input_path": str(input_path),
+            "packmol_log_path": str(packmol_dir / "packmol.log"),
+            "packmol_output_path": str(output_path),
+        }
+    else:
+        elems = list(silica_elems)
+        coords = np.array(silica_coords, dtype=float).copy()
+        packing_meta = {"packing_method": "silica_only_no_packmol"}
     min_poly_silica = min_cross_distance(elems, coords, polymer_start) if fragments else float("inf")
     min_all = _min_all_distance(elems, coords)
     min_all_atoms = _min_all_atom_distance(elems, coords)
@@ -324,7 +365,7 @@ def _place_fragments(silica_elems: Sequence[str], silica_coords: np.ndarray, fra
     coords = coords - mins + 7.0
     extent = coords.max(axis=0) + 7.0
     box = tuple(float(max(float(box[i]), extent[i])) for i in range(3))
-    return elems, coords, box, {"min_polymer_silica_distance_A": f"{min_poly_silica:.3f}", "min_all_pair_distance_A": f"{min_all:.3f}", "min_all_atom_distance_A": f"{min_all_atoms:.3f}", "min_heavy_heavy_distance_A": f"{min_heavy:.3f}", "min_oxygen_oxygen_distance_A": f"{min_oo:.3f}"}
+    return elems, coords, box, {"min_polymer_silica_distance_A": f"{min_poly_silica:.3f}", "min_all_pair_distance_A": f"{min_all:.3f}", "min_all_atom_distance_A": f"{min_all_atoms:.3f}", "min_heavy_heavy_distance_A": f"{min_heavy:.3f}", "min_oxygen_oxygen_distance_A": f"{min_oo:.3f}", **packing_meta}
 
 
 def min_cross_distance(elems: Sequence[str], coords: np.ndarray, split: int) -> float:
@@ -468,7 +509,8 @@ def build_closed_small_anchors(config: Dict[str, Any], mode: str = "tiny") -> Pa
     report_rows: List[Dict[str, Any]] = []
     for anchor_id, family, names in specs[: int(config.get("closed_small_anchors", {}).get(f"{mode}_max_structures", len(specs)))]:
         frag_list = [(name, fragments[name]) for name in names]
-        elems, coords, local_box, geom_meta = _place_fragments(silica_elems, silica_coords, frag_list, box)
+        structure_dir = outbase / anchor_id
+        elems, coords, local_box, geom_meta = _place_fragments(silica_elems, silica_coords, frag_list, box, config, structure_dir, seed=9000 + len(rows))
         atom_counts = {element: elems.count(element) for element in sorted(set(elems))}
         metadata = {
             "source_stage": "closed_hydrogen_capped_small_anchor",
@@ -479,7 +521,6 @@ def build_closed_small_anchors(config: Dict[str, Any], mode: str = "tiny") -> Pa
             **silica_meta,
             **geom_meta,
         }
-        structure_dir = outbase / anchor_id
         extxyz_path = structure_dir / "structure.extxyz"
         _write_extxyz(extxyz_path, elems, coords, local_box, metadata)
         contact_ok = not names or float(geom_meta["min_polymer_silica_distance_A"]) <= 3.6
