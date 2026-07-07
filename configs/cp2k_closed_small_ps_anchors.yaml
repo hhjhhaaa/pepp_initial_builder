@@ -61,12 +61,15 @@ closed_small_anchors:
   max_silica_atoms_before_capping: 90
   cell_margin_A: 8.0
   emc_chain_length_backbone: 32
+  # Packmol keeps the silica cluster fixed and places polymer fragments in a box
+  # above the capped silica surface. These are generation parameters, not
+  # post-generation rejection rules.
   packmol_tolerance_A: 1.85
   packmol_maxit: 5000
   packmol_timeout_seconds: 300
-  packmol_lateral_padding_A: 4.0
-  packmol_surface_gap_A: 2.2
-  packmol_surface_layer_thickness_A: 10.0
+  packmol_surface_xy_margin_A: 4.0
+  packmol_surface_z_gap_from_silica_top_A: 2.2
+  packmol_surface_z_packing_thickness_A: 10.0
   tiny_max_structures: 9
   pilot_max_structures: 9
   main_max_structures: 9

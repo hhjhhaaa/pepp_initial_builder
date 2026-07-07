@@ -318,11 +318,19 @@ def _write_manual_structure_review(config: Dict[str, Any], review_rows: List[Dic
         "Status: pending user review before CP2K input generation.",
         "",
         "Generation flow:",
-        "1. Build one PoreMS-derived silica patch and align the local slab frame.",
-        "2. Cap silica boundaries with H/OH; unclosable boundary Si atoms are removed and capping is rerun.",
-        "3. Generate PE/PP fragments through EMC and PS fragments as phenyl-side-chain styrene oligomers.",
-        "4. Pack fixed H/OH-capped silica plus polymer fragments with Packmol inside the configured surface box.",
-        "5. Treat silica closure and atom-overlap checks as hard gates; polymer-silica distance is reported for manual review, not used as a rejection gate.",
+        "1. 用 PoreMS 生成 SiO2 局部 patch，并把局部 slab 表面整理成 XY 面，表面法向为 +Z。",
+        "2. 对 SiO2 边界做 H/OH 封端；如果某些边界 Si 无法闭合，就剪掉该边界 Si 后重新封端。",
+        "3. PE/PP 片段来自 EMC；PS 片段是带苯环侧基的 styrene oligomer，不再生成历史误设的碳酸酯体系。",
+        "4. Packmol 固定已封端 SiO2，把聚合物片段打包到 SiO2 表面上方的指定盒子里。",
+        "5. 硅氧闭合和明显原子重叠是硬 gate；polymer-silica 最近距离只写入报告，由人工审查，不再自动拒绝。",
+        "",
+        "Packmol 参数说明:",
+        f"- packmol_tolerance_A = {config.get('closed_small_anchors', {}).get('packmol_tolerance_A')}: Packmol 原子间最小容忍距离，单位 A。",
+        f"- packmol_surface_xy_margin_A = {config.get('closed_small_anchors', {}).get('packmol_surface_xy_margin_A')}: 聚合物打包盒相对 SiO2 patch 在 X/Y 方向额外扩展的距离，单位 A。",
+        f"- packmol_surface_z_gap_from_silica_top_A = {config.get('closed_small_anchors', {}).get('packmol_surface_z_gap_from_silica_top_A')}: 聚合物打包盒底部距离 SiO2 最高原子的初始 Z 间隙，单位 A。",
+        f"- packmol_surface_z_packing_thickness_A = {config.get('closed_small_anchors', {}).get('packmol_surface_z_packing_thickness_A')}: 聚合物在表面上方可用的 Z 向打包厚度，单位 A。",
+        f"- packmol_maxit = {config.get('closed_small_anchors', {}).get('packmol_maxit')}: Packmol 优化最大迭代数。",
+        f"- packmol_timeout_seconds = {config.get('closed_small_anchors', {}).get('packmol_timeout_seconds')}: 单个 Packmol 打包任务超时时间，单位秒。",
         "",
         "| index | structure | atoms | status | review | min polymer-silica A | Si undercoord | uncapped O | min heavy-heavy A | packmol | extxyz |",
         "| --- | --- | ---: | --- | --- | ---: | ---: | ---: | ---: | --- | --- |",
@@ -356,9 +364,9 @@ def _write_surface_packmol_input(packmol_dir: Path, silica: AtomSet, fragments: 
     mins = coords.min(axis=0)
     maxs = coords.max(axis=0)
     top_z = float(maxs[2])
-    padding = float(settings.get("packmol_lateral_padding_A", 7.0))
-    gap = float(settings.get("packmol_surface_gap_A", 2.1))
-    layer = float(settings.get("packmol_surface_layer_thickness_A", 7.5))
+    padding = float(settings["packmol_surface_xy_margin_A"])
+    gap = float(settings["packmol_surface_z_gap_from_silica_top_A"])
+    layer = float(settings["packmol_surface_z_packing_thickness_A"])
     xlo, xhi = float(mins[0] - padding), float(maxs[0] + padding)
     ylo, yhi = float(mins[1] - padding), float(maxs[1] + padding)
     zlo, zhi = top_z + gap, top_z + gap + layer

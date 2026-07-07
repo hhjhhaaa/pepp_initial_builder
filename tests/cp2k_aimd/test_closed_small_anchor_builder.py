@@ -31,9 +31,9 @@ def test_packmol_surface_input_uses_fixed_silica_and_surface_box(tmp_path):
         [("PE", frag)],
         {
             "packmol_tolerance_A": 1.85,
-            "packmol_lateral_padding_A": 7.0,
-            "packmol_surface_gap_A": 2.1,
-            "packmol_surface_layer_thickness_A": 7.5,
+            "packmol_surface_xy_margin_A": 7.0,
+            "packmol_surface_z_gap_from_silica_top_A": 2.1,
+            "packmol_surface_z_packing_thickness_A": 7.5,
             "packmol_maxit": 5000,
         },
         seed=9001,
