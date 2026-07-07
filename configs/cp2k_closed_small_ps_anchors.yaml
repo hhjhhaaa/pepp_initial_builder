@@ -66,7 +66,7 @@ closed_small_anchors:
   packmol_timeout_seconds: 300
   packmol_lateral_padding_A: 4.0
   packmol_surface_gap_A: 2.2
-  packmol_surface_layer_thickness_A: 16.0
+  packmol_surface_layer_thickness_A: 10.0
   tiny_max_structures: 9
   pilot_max_structures: 9
   main_max_structures: 9

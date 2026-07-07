@@ -86,7 +86,7 @@ def _oh_counts(elems: Sequence[str], coords: np.ndarray) -> Dict[int, List[int]]
     return o_to_h
 
 
-def _cap_silica(elems_in: Sequence[str], coords_in: np.ndarray) -> Tuple[List[str], np.ndarray, Dict[str, Any]]:
+def _cap_silica_once(elems_in: Sequence[str], coords_in: np.ndarray) -> Tuple[List[str], np.ndarray, Dict[str, Any]]:
     elems = list(elems_in)
     coords = np.array(coords_in, dtype=float).copy()
     si_to_o, o_to_si = _bond_counts(elems, coords)
@@ -208,10 +208,30 @@ def _cap_silica(elems_in: Sequence[str], coords_in: np.ndarray) -> Tuple[List[st
 
     si_to_o, o_to_si = _bond_counts(elems, coords)
     o_to_h = _oh_counts(elems, coords)
-    bad_si = sum(1 for i, e in enumerate(elems) if e == "Si" and len(si_to_o.get(i, [])) < 4)
+    bad_si_indices = [i for i, e in enumerate(elems) if e == "Si" and len(si_to_o.get(i, [])) < 4]
+    bad_si = len(bad_si_indices)
     bad_o = sum(1 for i, e in enumerate(elems) if e == "O" and not (len(o_to_si.get(i, [])) >= 2 or (len(o_to_si.get(i, [])) == 1 and len(o_to_h.get(i, [])) >= 1)))
-    meta = {"added_boundary_H": added_h, "added_boundary_OH": added_oh, "undercoordinated_Si_after_capping": bad_si, "uncapped_O_after_capping": bad_o}
+    meta = {"added_boundary_H": added_h, "added_boundary_OH": added_oh, "undercoordinated_Si_after_capping": bad_si, "uncapped_O_after_capping": bad_o, "_undercoordinated_si_indices": ",".join(str(i) for i in bad_si_indices)}
     return elems, coords, meta
+
+
+def _cap_silica(elems_in: Sequence[str], coords_in: np.ndarray) -> Tuple[List[str], np.ndarray, Dict[str, Any]]:
+    elems = list(elems_in)
+    coords = np.array(coords_in, dtype=float).copy()
+    last_meta: Dict[str, Any] = {}
+    for _pass in range(8):
+        capped_elems, capped_coords, meta = _cap_silica_once(elems, coords)
+        bad_si_text = str(meta.pop("_undercoordinated_si_indices", ""))
+        if meta["undercoordinated_Si_after_capping"] == 0:
+            return capped_elems, capped_coords, meta
+        bad_si = {int(item) for item in bad_si_text.split(",") if item}
+        if not bad_si:
+            break
+        keep = [i for i in range(len(capped_elems)) if i not in bad_si]
+        elems = [capped_elems[i] for i in keep]
+        coords = capped_coords[keep]
+        last_meta = meta
+    raise RuntimeError(f"Unable to produce a chemically closed silica patch; last capping state: {last_meta}")
 
 
 def _center_fragment(elems: Sequence[str], coords: np.ndarray) -> AtomSet:
@@ -523,8 +543,14 @@ def build_closed_small_anchors(config: Dict[str, Any], mode: str = "tiny") -> Pa
         }
         extxyz_path = structure_dir / "structure.extxyz"
         _write_extxyz(extxyz_path, elems, coords, local_box, metadata)
-        contact_ok = not names or float(geom_meta["min_polymer_silica_distance_A"]) <= 3.6
-        status = "available" if contact_ok and silica_meta["undercoordinated_Si_after_capping"] == 0 and silica_meta["uncapped_O_after_capping"] == 0 and float(geom_meta["min_all_pair_distance_A"]) >= 0.65 and float(geom_meta["min_heavy_heavy_distance_A"]) >= 1.35 and float(geom_meta["min_oxygen_oxygen_distance_A"]) >= 2.05 else "failed_geometry_or_capping_gate"
+        hard_geometry_ok = (
+            silica_meta["undercoordinated_Si_after_capping"] == 0
+            and silica_meta["uncapped_O_after_capping"] == 0
+            and float(geom_meta["min_all_pair_distance_A"]) >= 0.65
+            and float(geom_meta["min_heavy_heavy_distance_A"]) >= 1.35
+            and float(geom_meta["min_oxygen_oxygen_distance_A"]) >= 2.05
+        )
+        status = "available" if hard_geometry_ok else "failed_geometry_or_capping_gate"
         row = {
             "aimd_structure_id": anchor_id,
             "status": status,
