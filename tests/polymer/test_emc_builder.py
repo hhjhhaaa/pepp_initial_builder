@@ -52,6 +52,24 @@ def test_emc_library_recipes_cover_pe_pp_ps():
     assert "*C(c1ccccc1)C*" in render_pure_recipe({**base, "component": "PS"}, cfg)
 
 
+def test_batch2a_emc_config_renders_binary_mixture_recipes(tmp_path: Path):
+    cfg = load_config("configs/polymer_batch2a_emc.yaml")
+    row = cfg["emc_library"]["pilot_systems"][0]
+    text = render_pure_recipe(row, cfg)
+    assert "Components: PE/PP" in text
+    assert "pe_polymer" in text
+    assert "pp_polymer" in text
+    assert "*CC*" in text
+    assert "*C(C)C*" in text
+    assert "packmol" not in text.lower()
+    metadata = _metadata_for_system(cfg, row, tmp_path)
+    assert metadata["builder"]["builder_used"] == "emc"
+    assert metadata["components"] == ["PE", "PP"]
+    assert metadata["component_chain_counts"] == {"PE": 5, "PP": 5}
+    assert metadata["component_chain_counts_arg"] == "PE:5,PP:5"
+    assert metadata["structure_task"]["lane"] == "mlff_direct"
+
+
 def test_openbabel_format_mapping_supports_extxyz_and_pdb_gz():
     assert _obabel_format(Path("polymer.extxyz")) == "exyz"
     assert _obabel_format(Path("polymer.pdb.gz")) == "pdb"

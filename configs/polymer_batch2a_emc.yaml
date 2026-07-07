@@ -1,0 +1,93 @@
+paths:
+  root: .
+  systems_dir: data/polymer/systems
+  structure_library_dir: data/structure_library
+  mlff_direct_structures_dir: data/structure_library/mlff_direct
+  aimd_structures_dir: data/structure_library/aimd
+  finetuned_mlff_structures_dir: data/structure_library/fine_tuned_mlff
+  emc_library_dir: data/structure_library/mlff_direct/emc_polymer_batch2a
+  matrix_dir: data/polymer/matrix
+  exports_dir: data/exports
+  logs_dir: outputs/logs
+
+tools:
+  preferred_builder: emc
+  known_emc_root: ~/software/EMC
+  known_packmol_executable:
+  known_lammps_executable:
+  known_openbabel_executable: /home/jinhao/miniforge3/envs/pepp-graph-spib/bin/obabel
+
+emc:
+  enabled: true
+  force_field: pcff
+  require_all_atom_output: true
+  attempt_timeout_seconds: 300
+  build_timeout_seconds: 900
+  preferred_force_fields: [PCFF]
+  save_discovery_report: true
+
+emc_library:
+  task_lane: mlff_direct
+  intended_runner: zero_shot_mace_mh0_batch2a
+  output_label_status: provisional MLFF labels
+  force_field: charmm/c36a/cgenff
+  pilot_systems:
+    - system_id: PE50_PP50_PE5xN50_PP5xN30_emc_seed1
+      components:
+        - component: PE
+          n_chains: 5
+          repeat_units: 50
+        - component: PP
+          n_chains: 5
+          repeat_units: 30
+      ntotal: 3200
+      density_g_cm3: 0.852
+      temperature_K: 523.0
+      pressure_atm: 1.0
+      task_lane: mlff_direct
+    - system_id: PE50_PS50_PE5xN50_PS8xN12_emc_seed1
+      components:
+        - component: PE
+          n_chains: 5
+          repeat_units: 50
+        - component: PS
+          n_chains: 8
+          repeat_units: 12
+      ntotal: 3400
+      density_g_cm3: 0.930
+      temperature_K: 523.0
+      pressure_atm: 1.0
+      task_lane: mlff_direct
+    - system_id: PP50_PS50_PP5xN30_PS8xN12_emc_seed1
+      components:
+        - component: PP
+          n_chains: 5
+          repeat_units: 30
+        - component: PS
+          n_chains: 8
+          repeat_units: 12
+      ntotal: 3300
+      density_g_cm3: 0.925
+      temperature_K: 523.0
+      pressure_atm: 1.0
+      task_lane: mlff_direct
+  thermal_relax:
+    enabled: true
+    protocol: emc_polymer_lammps_thermal_relax_v1
+    timestep_fs: 1.0
+    tdamp_fs: 100.0
+    pdamp_fs: 1000.0
+    anneal_temperature_K: 650.0
+    minimize_etol: 1.0e-6
+    minimize_ftol: 1.0e-8
+    minimize_maxiter: 10000
+    minimize_maxeval: 20000
+    warmup_steps: 10000
+    nvt_heat_steps: 50000
+    nvt_cool_steps: 50000
+    npt_steps: 200000
+    nvt_settle_steps: 100000
+    thermo_every: 1000
+    dump_every: 10000
+    timeout_seconds: 21600
+
