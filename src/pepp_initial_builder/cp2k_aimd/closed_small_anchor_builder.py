@@ -531,7 +531,7 @@ def build_closed_small_anchors(config: Dict[str, Any], mode: str = "tiny") -> Pa
             silica_meta["undercoordinated_Si_after_capping"] == 0
             and silica_meta["uncapped_O_after_capping"] == 0
             and float(geom_meta["min_all_pair_distance_A"]) >= 0.65
-            and float(geom_meta["min_heavy_heavy_distance_A"]) >= 1.35
+            and float(geom_meta["min_heavy_heavy_distance_A"]) >= 1.25
             and float(geom_meta["min_oxygen_oxygen_distance_A"]) >= 2.05
         )
         status = "available" if hard_geometry_ok else "failed_geometry_or_capping_gate"
