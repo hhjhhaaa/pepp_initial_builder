@@ -299,6 +299,53 @@ def _run_packmol(input_path: Path, executable: str, timeout_seconds: int) -> Non
         raise RuntimeError(f"Packmol failed for {input_path}; see {log_path}")
 
 
+def _packmol_success(log_path: str) -> str:
+    path = Path(log_path)
+    if not path.exists():
+        return "not_applicable"
+    return "success" if "Success!" in path.read_text(encoding="utf-8", errors="ignore") else "failed"
+
+
+def _write_manual_structure_review(config: Dict[str, Any], review_rows: List[Dict[str, Any]]) -> None:
+    logs_dir = p(config, "logs_dir")
+    csv_path = logs_dir / "manual_structure_review.csv"
+    md_path = logs_dir / "manual_structure_review.md"
+    write_rows(csv_path, review_rows)
+
+    lines = [
+        "# Manual structure review",
+        "",
+        "Status: pending user review before CP2K input generation.",
+        "",
+        "Generation flow:",
+        "1. Build one PoreMS-derived silica patch and align the local slab frame.",
+        "2. Cap silica boundaries with H/OH; unclosable boundary Si atoms are removed and capping is rerun.",
+        "3. Generate PE/PP fragments through EMC and PS fragments as phenyl-side-chain styrene oligomers.",
+        "4. Pack fixed H/OH-capped silica plus polymer fragments with Packmol inside the configured surface box.",
+        "5. Treat silica closure and atom-overlap checks as hard gates; polymer-silica distance is reported for manual review, not used as a rejection gate.",
+        "",
+        "| index | structure | atoms | status | review | min polymer-silica A | Si undercoord | uncapped O | min heavy-heavy A | packmol | extxyz |",
+        "| --- | --- | ---: | --- | --- | ---: | ---: | ---: | ---: | --- | --- |",
+    ]
+    for idx, row in enumerate(review_rows):
+        lines.append(
+            "| {idx} | {sid} | {natoms} | {status} | {review} | {dist} | {bad_si} | {bad_o} | {heavy} | {packmol} | {extxyz} |".format(
+                idx=idx,
+                sid=row["aimd_structure_id"],
+                natoms=row["n_atoms"],
+                status=row["status"],
+                review=row["manual_review_status"],
+                dist=row["min_polymer_silica_distance_A"],
+                bad_si=row["undercoordinated_Si_after_capping"],
+                bad_o=row["uncapped_O_after_capping"],
+                heavy=row["min_heavy_heavy_distance_A"],
+                packmol=row["packmol_status"],
+                extxyz=row["extxyz_path"],
+            )
+        )
+    md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def _write_surface_packmol_input(packmol_dir: Path, silica: AtomSet, fragments: Sequence[Tuple[str, AtomSet]], settings: Dict[str, Any], seed: int) -> Path:
     silica_elems, silica_coords = silica
     template_dir = packmol_dir / "templates"
@@ -527,6 +574,7 @@ def build_closed_small_anchors(config: Dict[str, Any], mode: str = "tiny") -> Pa
     ]
     rows: List[Dict[str, Any]] = []
     report_rows: List[Dict[str, Any]] = []
+    review_rows: List[Dict[str, Any]] = []
     for anchor_id, family, names in specs[: int(config.get("closed_small_anchors", {}).get(f"{mode}_max_structures", len(specs)))]:
         frag_list = [(name, fragments[name]) for name in names]
         structure_dir = outbase / anchor_id
@@ -554,6 +602,8 @@ def build_closed_small_anchors(config: Dict[str, Any], mode: str = "tiny") -> Pa
         row = {
             "aimd_structure_id": anchor_id,
             "status": status,
+            "manual_review_status": "pending_user_review",
+            "structure_review_required": True,
             "family": family,
             "crop_family": family,
             "crop_source": "porems_cropped_h_capped_silica_cluster",
@@ -583,10 +633,32 @@ def build_closed_small_anchors(config: Dict[str, Any], mode: str = "tiny") -> Pa
         }
         rows.append(row)
         report_rows.append({**row, **{f"count_{k}": v for k, v in atom_counts.items()}, **geom_meta, **silica_meta})
+        review_rows.append(
+            {
+                "aimd_structure_id": anchor_id,
+                "family": family,
+                "status": status,
+                "manual_review_status": row["manual_review_status"],
+                "n_atoms": len(elems),
+                "atom_counts": ";".join(f"{element}:{count}" for element, count in sorted(atom_counts.items())),
+                "undercoordinated_Si_after_capping": silica_meta["undercoordinated_Si_after_capping"],
+                "uncapped_O_after_capping": silica_meta["uncapped_O_after_capping"],
+                "min_polymer_silica_distance_A": geom_meta["min_polymer_silica_distance_A"],
+                "min_all_pair_distance_A": geom_meta["min_all_pair_distance_A"],
+                "min_heavy_heavy_distance_A": geom_meta["min_heavy_heavy_distance_A"],
+                "min_oxygen_oxygen_distance_A": geom_meta["min_oxygen_oxygen_distance_A"],
+                "packing_method": geom_meta["packing_method"],
+                "packmol_status": _packmol_success(geom_meta.get("packmol_log_path", "")),
+                "packmol_log_path": geom_meta.get("packmol_log_path", ""),
+                "extxyz_path": str(extxyz_path),
+                "review_instruction": "inspect_extxyz_before_cp2k_input_generation",
+            }
+        )
     manifest = write_rows(outbase / "aimd_local_manifest.csv", rows)
     write_rows(p(config, "aimd_structure_manifest"), [{**row, "manifest_kind": "aimd_local"} for row in rows])
     report = p(config, "logs_dir") / "closed_small_anchor_structure_report.csv"
     write_rows(report, report_rows)
+    _write_manual_structure_review(config, review_rows)
     (p(config, "logs_dir") / "closed_small_anchor_structure_report.md").write_text(
         "# Closed small-anchor structure report\n\n"
         "Source stage: closed_hydrogen_capped_small_anchor.\n"
