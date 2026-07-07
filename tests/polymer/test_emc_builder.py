@@ -44,6 +44,22 @@ def test_emc_recipe_supports_pp():
     assert "*C(C)C*" in _recipe_text(row, cfg)
 
 
+def test_emc_recipe_supports_ps():
+    cfg = load_config("configs/polymer.yaml")
+    row = {
+        "system_id": "ps",
+        "chain_length_backbone": 24,
+        "n_pe_chains": 0,
+        "n_pp_chains": 0,
+        "n_ps_chains": 1,
+        "estimated_total_atoms": 220,
+        "initial_packing_density_g_cm3": 0.85,
+    }
+    text = _recipe_text(row, cfg)
+    assert "*C(c1ccccc1)C*" in text
+    assert "ps_poly" in text
+
+
 def test_emc_library_recipes_cover_pe_pp_ps():
     cfg = load_config("configs/polymer.yaml")
     base = {"system_id": "x", "n_chains": 2, "repeat_units": 12, "ntotal": 500}

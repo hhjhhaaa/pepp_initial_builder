@@ -180,38 +180,3 @@ def test_cp2k_inputs_slurm_and_no_output_status(tmp_path):
     exported = export_aimd_dataset_manifest(cfg)
     exported_df = pd.read_csv(exported)
     assert exported_df.iloc[0]["usable_for_mlff_training"] == False
-
-
-def test_closed_small_review_gate_blocks_cp2k_inputs_until_approved(tmp_path):
-    cfg = _cfg(tmp_path)
-    pending = tmp_path / "data/cp2k_aimd/seed_structures/pending/structure.extxyz"
-    approved = tmp_path / "data/cp2k_aimd/seed_structures/approved/structure.extxyz"
-    _write_extxyz(pending)
-    _write_extxyz(approved)
-    manifest = tmp_path / "data/cp2k_aimd/seed_structures/aimd_local_manifest.csv"
-    manifest.parent.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame(
-        [
-            {
-                "aimd_structure_id": "pending_structure",
-                "status": "available",
-                "family": "PE_PS_mixed_silica_contact",
-                "extxyz_path": str(pending),
-                "structure_review_required": True,
-                "manual_review_status": "pending_user_review",
-            },
-            {
-                "aimd_structure_id": "approved_structure",
-                "status": "available",
-                "family": "PE_PP_PS_mixed_silica_contact",
-                "extxyz_path": str(approved),
-                "structure_review_required": True,
-                "manual_review_status": "approved_for_cp2k",
-            },
-        ]
-    ).to_csv(manifest, index=False)
-
-    write_cp2k_label_inputs(cfg, "tiny")
-
-    assert not (tmp_path / "data/cp2k_aimd/jobs/pending_structure/sp_force/input.inp").exists()
-    assert (tmp_path / "data/cp2k_aimd/jobs/approved_structure/sp_force/input.inp").exists()

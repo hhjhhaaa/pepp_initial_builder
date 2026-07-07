@@ -35,8 +35,9 @@ def _recipe_text(row: Dict[str, Any], config: Dict[str, Any]) -> str:
     n = int(row["chain_length_backbone"])
     pe = int(row["n_pe_chains"])
     pp = int(row["n_pp_chains"])
-    if pe + pp < 1:
-        raise RuntimeError("EMC recipe requires at least one PE or PP chain")
+    ps = int(row.get("n_ps_chains", 0))
+    if pe + pp + ps < 1:
+        raise RuntimeError("EMC recipe requires at least one PE, PP, or PS chain")
     groups: List[str] = []
     clusters: List[str] = []
     polymers: List[str] = []
@@ -48,6 +49,10 @@ def _recipe_text(row: Dict[str, Any], config: Dict[str, Any]) -> str:
         groups += ["pp_monomer *C(C)C*,1,pp_monomer:2,1,pp_term:1,2,pp_term:1", "pp_term *C"]
         clusters.append("pp_poly alternate 1")
         polymers.append(f"pp_poly\n{max(pp, 1)} pp_monomer,{max(n // 2, 1)},pp_term,2")
+    if ps:
+        groups += ["ps_monomer *C(c1ccccc1)C*,1,ps_monomer:2,1,ps_term:1,2,ps_term:1", "ps_term *C"]
+        clusters.append("ps_poly alternate 1")
+        polymers.append(f"ps_poly\n{max(ps, 1)} ps_monomer,{max(n // 2, 1)},ps_term,2")
     return f"""#!/usr/bin/env emc.pl
 ITEM OPTIONS
 replace true
@@ -69,6 +74,8 @@ ITEM END
 
 
 def write_emc_chain_template(config: Dict[str, Any], chain_type: str, chain_length: int, seed: int, outdir: str | Path) -> Dict[str, str]:
+    if chain_type not in {"PE", "PP", "PS"}:
+        raise RuntimeError(f"Unsupported EMC chain_type: {chain_type}")
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
     row = {
@@ -77,7 +84,8 @@ def write_emc_chain_template(config: Dict[str, Any], chain_type: str, chain_leng
         "seed": int(seed),
         "n_pe_chains": 1 if chain_type == "PE" else 0,
         "n_pp_chains": 1 if chain_type == "PP" else 0,
-        "estimated_total_atoms": max(50, 3 * int(chain_length) + 20 if chain_type == "PE" else int(4.5 * int(chain_length)) + 20),
+        "n_ps_chains": 1 if chain_type == "PS" else 0,
+        "estimated_total_atoms": max(50, 3 * int(chain_length) + 20 if chain_type == "PE" else int(4.5 * int(chain_length)) + 20 if chain_type == "PP" else int(8.0 * int(chain_length)) + 20),
         "initial_packing_density_g_cm3": float(config.get("density", {}).get("initial_packing_density_g_cm3", 0.85)),
     }
     paths = _emc_paths(config)

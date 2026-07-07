@@ -19,24 +19,17 @@ def available_aimd_rows(config: Dict[str, Any]) -> List[Dict[str, str]]:
         return [{**row, "requested_label_mode": "short_aimd"} for row in selected_rows]
     master = p(config, "aimd_structure_manifest")
     rows = read_rows(master)
-    selected = [row for row in rows if _available_after_structure_review(row) and row.get("manifest_kind") == "aimd_local" and row.get("status") == "available" and row.get("extxyz_path")]
+    selected = [row for row in rows if row.get("manifest_kind") == "aimd_local" and row.get("status") == "available" and row.get("extxyz_path")]
     if selected:
         return selected
     local = p(config, "aimd_local_manifest")
     rows = read_rows(local)
-    selected = [row for row in rows if _available_after_structure_review(row) and row.get("status") == "available" and row.get("extxyz_path")]
+    selected = [row for row in rows if row.get("status") == "available" and row.get("extxyz_path")]
     if selected:
         return selected
     structure = p(config, "cp2k_structure_input_manifest")
     rows = read_rows(structure)
     return [{**row, "extxyz_path": row.get("cp2k_xyz_path", "")} for row in rows if "written" in row.get("status", "") and row.get("cp2k_xyz_path")]
-
-
-def _available_after_structure_review(row: Dict[str, str]) -> bool:
-    required = str(row.get("structure_review_required", "")).lower() in {"true", "1", "yes"}
-    if not required:
-        return True
-    return row.get("manual_review_status") == "approved_for_cp2k"
 
 
 def mode_names(row: Dict[str, str]) -> List[str]:

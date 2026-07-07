@@ -9,7 +9,6 @@ from typing import Any, Dict, List, Sequence, Tuple
 import numpy as np
 import pandas as pd
 import yaml
-from openbabel import pybel
 
 from pepp_initial_builder.common.openbabel import read_xyz_elements_coords
 from pepp_initial_builder.cp2k_aimd.config import ensure_dirs, p, write_rows
@@ -248,21 +247,6 @@ def _center_fragment(elems: Sequence[str], coords: np.ndarray) -> AtomSet:
     return list(elems), centered
 
 
-def _make_ps_fragment(kind: str) -> AtomSet:
-    smiles = {
-        "PS_dimer": "CC(c1ccccc1)CC(c2ccccc2)C",
-        "PS_trimer": "CC(c1ccccc1)CC(c2ccccc2)CC(c3ccccc3)C",
-    }[kind]
-    mol = pybel.readstring("smi", smiles)
-    mol.addh()
-    mol.make3D(forcefield="mmff94", steps=300)
-    elems = [atom.type.rstrip("0123456789") or atom.atomicnum for atom in mol.atoms]
-    elems = [str(e).capitalize().replace("Cl", "C") if not isinstance(e, int) else pybel.ob.GetSymbol(e) for e in elems]
-    coords = np.array([[atom.coords[0], atom.coords[1], atom.coords[2]] for atom in mol.atoms], dtype=float)
-    elems = ["C" if e.startswith("C") else "H" if e.startswith("H") else "O" if e.startswith("O") else e for e in elems]
-    return _center_fragment(elems, coords)
-
-
 def _make_emc_fragment(config: Dict[str, Any], chain_type: str, chain_length: int, seed: int, outdir: Path) -> AtomSet:
     conda_bin = Path(os.environ.get("CONDA_PREFIX", "/public/home/jinhao.hu/.conda/envs/peppmixure")) / "bin"
     os.environ["PATH"] = f"{conda_bin}:{os.environ.get('PATH', '')}"
@@ -297,63 +281,6 @@ def _run_packmol(input_path: Path, executable: str, timeout_seconds: int) -> Non
     text = log_path.read_text(encoding="utf-8", errors="ignore")
     if proc.returncode != 0 or "Success!" not in text:
         raise RuntimeError(f"Packmol failed for {input_path}; see {log_path}")
-
-
-def _packmol_success(log_path: str) -> str:
-    if not log_path:
-        return "not_applicable"
-    path = Path(log_path)
-    if not path.is_file():
-        return "not_applicable"
-    return "success" if "Success!" in path.read_text(encoding="utf-8", errors="ignore") else "failed"
-
-
-def _write_manual_structure_review(config: Dict[str, Any], review_rows: List[Dict[str, Any]]) -> None:
-    logs_dir = p(config, "logs_dir")
-    csv_path = logs_dir / "manual_structure_review.csv"
-    md_path = logs_dir / "manual_structure_review.md"
-    write_rows(csv_path, review_rows)
-
-    lines = [
-        "# Manual structure review",
-        "",
-        "Status: pending user review before CP2K input generation.",
-        "",
-        "Generation flow:",
-        "1. 用 PoreMS 生成 SiO2 局部 patch，并把局部 slab 表面整理成 XY 面，表面法向为 +Z。",
-        "2. 对 SiO2 边界做 H/OH 封端；如果某些边界 Si 无法闭合，就剪掉该边界 Si 后重新封端。",
-        "3. PE/PP 片段来自 EMC；PS 片段是带苯环侧基的 styrene oligomer，不再生成历史误设的碳酸酯体系。",
-        "4. Packmol 固定已封端 SiO2，把聚合物片段打包到 SiO2 表面上方的指定盒子里。",
-        "5. 硅氧闭合和明显原子重叠是硬 gate；polymer-silica 最近距离只写入报告，由人工审查，不再自动拒绝。",
-        "",
-        "Packmol 参数说明:",
-        f"- packmol_tolerance_A = {config.get('closed_small_anchors', {}).get('packmol_tolerance_A')}: Packmol 原子间最小容忍距离，单位 A。",
-        f"- packmol_lateral_padding_A = {config.get('closed_small_anchors', {}).get('packmol_lateral_padding_A')}: 聚合物打包盒相对 SiO2 patch 在 X/Y 方向额外扩展的距离，单位 A；名字里的 lateral 指表面平面内横向范围。",
-        f"- packmol_surface_gap_A = {config.get('closed_small_anchors', {}).get('packmol_surface_gap_A')}: 聚合物打包盒底部距离 SiO2 最高原子的初始 Z 间隙，单位 A；它控制初始结构不要贴得过近。",
-        f"- packmol_surface_layer_thickness_A = {config.get('closed_small_anchors', {}).get('packmol_surface_layer_thickness_A')}: 聚合物在表面上方可用的 Z 向打包厚度，单位 A；它控制初始结构不要离表面过远。",
-        f"- packmol_maxit = {config.get('closed_small_anchors', {}).get('packmol_maxit')}: Packmol 优化最大迭代数。",
-        f"- packmol_timeout_seconds = {config.get('closed_small_anchors', {}).get('packmol_timeout_seconds')}: 单个 Packmol 打包任务超时时间，单位秒。",
-        "",
-        "| index | structure | atoms | status | review | min polymer-silica A | Si undercoord | uncapped O | min heavy-heavy A | packmol | extxyz |",
-        "| --- | --- | ---: | --- | --- | ---: | ---: | ---: | ---: | --- | --- |",
-    ]
-    for idx, row in enumerate(review_rows):
-        lines.append(
-            "| {idx} | {sid} | {natoms} | {status} | {review} | {dist} | {bad_si} | {bad_o} | {heavy} | {packmol} | {extxyz} |".format(
-                idx=idx,
-                sid=row["aimd_structure_id"],
-                natoms=row["n_atoms"],
-                status=row["status"],
-                review=row["manual_review_status"],
-                dist=row["min_polymer_silica_distance_A"],
-                bad_si=row["undercoordinated_Si_after_capping"],
-                bad_o=row["uncapped_O_after_capping"],
-                heavy=row["min_heavy_heavy_distance_A"],
-                packmol=row["packmol_status"],
-                extxyz=row["extxyz_path"],
-            )
-        )
-    md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _write_surface_packmol_input(packmol_dir: Path, silica: AtomSet, fragments: Sequence[Tuple[str, AtomSet]], settings: Dict[str, Any], seed: int) -> Path:
@@ -568,15 +495,15 @@ def build_closed_small_anchors(config: Dict[str, Any], mode: str = "tiny") -> Pa
     fragments = {
         "PE": _make_emc_fragment(config, "PE", chain_len, 101, template_base / "pe"),
         "PP": _make_emc_fragment(config, "PP", chain_len, 201, template_base / "pp"),
-        "PS": _make_ps_fragment("PS_dimer"),
-        "PS_trimer": _make_ps_fragment("PS_trimer"),
+        "PS": _make_emc_fragment(config, "PS", chain_len, 301, template_base / "ps"),
+        "PS_seed2": _make_emc_fragment(config, "PS", chain_len, 302, template_base / "ps_seed2"),
     }
     specs = [
         ("closed_anchor_0001_silica_only_h_capped", "silica_only_h_capped", []),
         ("closed_anchor_0002_PE_emc_h_capped_silica_contact", "PE_emc_silica_contact", ["PE"]),
         ("closed_anchor_0003_PP_emc_h_capped_silica_contact", "PP_emc_silica_contact", ["PP"]),
-        ("closed_anchor_0004_PS_phenyl_h_capped_silica_contact", "PS_phenyl_silica_contact", ["PS"]),
-        ("closed_anchor_0005_PS_trimer_h_capped_silica_contact", "PS_trimer_silica_contact", ["PS_trimer"]),
+        ("closed_anchor_0004_PS_emc_h_capped_silica_contact", "PS_emc_silica_contact", ["PS"]),
+        ("closed_anchor_0005_PS_emc_seed2_h_capped_silica_contact", "PS_emc_seed2_silica_contact", ["PS_seed2"]),
         ("closed_anchor_0006_PE_PP_emc_mixed_h_capped_silica_contact", "PE_PP_mixed_silica_contact", ["PE", "PP"]),
         ("closed_anchor_0007_PE_PS_mixed_h_capped_silica_contact", "PE_PS_mixed_silica_contact", ["PE", "PS"]),
         ("closed_anchor_0008_PP_PS_mixed_h_capped_silica_contact", "PP_PS_mixed_silica_contact", ["PP", "PS"]),
@@ -584,7 +511,6 @@ def build_closed_small_anchors(config: Dict[str, Any], mode: str = "tiny") -> Pa
     ]
     rows: List[Dict[str, Any]] = []
     report_rows: List[Dict[str, Any]] = []
-    review_rows: List[Dict[str, Any]] = []
     for anchor_id, family, names in specs[: int(config.get("closed_small_anchors", {}).get(f"{mode}_max_structures", len(specs)))]:
         frag_list = [(name, fragments[name]) for name in names]
         structure_dir = outbase / anchor_id
@@ -612,8 +538,6 @@ def build_closed_small_anchors(config: Dict[str, Any], mode: str = "tiny") -> Pa
         row = {
             "aimd_structure_id": anchor_id,
             "status": status,
-            "manual_review_status": "pending_user_review",
-            "structure_review_required": True,
             "family": family,
             "crop_family": family,
             "crop_source": "porems_cropped_h_capped_silica_cluster",
@@ -643,37 +567,15 @@ def build_closed_small_anchors(config: Dict[str, Any], mode: str = "tiny") -> Pa
         }
         rows.append(row)
         report_rows.append({**row, **{f"count_{k}": v for k, v in atom_counts.items()}, **geom_meta, **silica_meta})
-        review_rows.append(
-            {
-                "aimd_structure_id": anchor_id,
-                "family": family,
-                "status": status,
-                "manual_review_status": row["manual_review_status"],
-                "n_atoms": len(elems),
-                "atom_counts": ";".join(f"{element}:{count}" for element, count in sorted(atom_counts.items())),
-                "undercoordinated_Si_after_capping": silica_meta["undercoordinated_Si_after_capping"],
-                "uncapped_O_after_capping": silica_meta["uncapped_O_after_capping"],
-                "min_polymer_silica_distance_A": geom_meta["min_polymer_silica_distance_A"],
-                "min_all_pair_distance_A": geom_meta["min_all_pair_distance_A"],
-                "min_heavy_heavy_distance_A": geom_meta["min_heavy_heavy_distance_A"],
-                "min_oxygen_oxygen_distance_A": geom_meta["min_oxygen_oxygen_distance_A"],
-                "packing_method": geom_meta["packing_method"],
-                "packmol_status": _packmol_success(geom_meta.get("packmol_log_path", "")),
-                "packmol_log_path": geom_meta.get("packmol_log_path", ""),
-                "extxyz_path": str(extxyz_path),
-                "review_instruction": "inspect_extxyz_before_cp2k_input_generation",
-            }
-        )
     manifest = write_rows(outbase / "aimd_local_manifest.csv", rows)
     write_rows(p(config, "aimd_structure_manifest"), [{**row, "manifest_kind": "aimd_local"} for row in rows])
     report = p(config, "logs_dir") / "closed_small_anchor_structure_report.csv"
     write_rows(report, report_rows)
-    _write_manual_structure_review(config, review_rows)
     (p(config, "logs_dir") / "closed_small_anchor_structure_report.md").write_text(
         "# Closed small-anchor structure report\n\n"
-        "Source stage: closed_hydrogen_capped_small_anchor.\n"
-        "SiO2 source: PoreMS pore crop; boundary treatment: H/OH capping.\n"
-        "PE/PP source: EMC class-II chain templates. PS source: capped styrene oligomer OpenBabel 3D fragment with phenyl side groups, pending EMC topology validation.\n",
+        "生成流程：PoreMS 生成 SiO2 局部 patch；局部表面按 XY 面整理，表面法向沿 +Z；SiO2 边界做 H/OH 封端，无法闭合的边界 Si 会剪掉后重新封端；PE、PP、PS 聚合物片段均由 EMC 生成；Packmol 固定封端 SiO2，并把聚合物片段打包到 SiO2 表面上方盒子里。\n\n"
+        "硬 gate：SiO2 封端闭合、明显原子重叠、O-O 过近。polymer-silica 最近距离只记录在 CSV 中，不作为自动拒绝条件。\n\n"
+        f"Packmol 参数：packmol_tolerance_A={config.get('closed_small_anchors', {}).get('packmol_tolerance_A')}；packmol_lateral_padding_A={config.get('closed_small_anchors', {}).get('packmol_lateral_padding_A')}，表示表面平面内 X/Y 额外范围；packmol_surface_gap_A={config.get('closed_small_anchors', {}).get('packmol_surface_gap_A')}，表示打包盒底部距离 SiO2 最高原子的 Z 间隙；packmol_surface_layer_thickness_A={config.get('closed_small_anchors', {}).get('packmol_surface_layer_thickness_A')}，表示表面上方可用 Z 向厚度。\n",
         encoding="utf-8",
     )
     return manifest
