@@ -41,27 +41,27 @@ def mode_names(row: Dict[str, str]) -> List[str]:
 
 def select_short_aimd_from_successful_sp(config: Dict[str, Any]) -> Path:
     ensure_dirs(config)
-    parsed = [
+    parsed_sp = [
         row
         for row in read_rows(p(config, "cp2k_parsed_dir") / "cp2k_parsed_manifest.csv")
-        if row.get("status") == "parsed_real_cp2k_output" and row.get("label_mode") == "sp_force"
+        if row.get("label_mode") == "sp_force"
     ]
     local_by_id = {row.get("aimd_structure_id", ""): row for row in read_rows(p(config, "aimd_local_manifest"))}
-    priority = [
-        "PP_methyl_silanol_contact",
-        "PP_methyl_siloxane_contact",
-        "PE_branched_side_chain_silanol_contact",
-        "PE_HDPE_CH2_silanol_contact",
-        "PE_PP_mixed_near_wall",
-        "silica_only_wall_baseline",
-    ]
     rows: List[Dict[str, Any]] = []
-    for family in priority:
-        chosen = [row for row in parsed if row.get("family") == family][:2]
-        for row in chosen:
-            local = local_by_id.get(row.get("aimd_structure_id", ""), {})
+    successful_sp = [
+        row
+        for row in parsed_sp
+        if row.get("status") == "parsed_real_cp2k_output"
+        and row.get("frames_extxyz_path")
+        and row.get("aimd_structure_id", "") in local_by_id
+    ]
+    if parsed_sp and len(successful_sp) == len(parsed_sp):
+        for row in successful_sp:
+            local = local_by_id[row.get("aimd_structure_id", "")]
             detected_out = row.get("detected_cp2k_out", "")
-            source_sp_job_dir = row.get("source_job_dir") or row.get("job_dir") or (str(Path(detected_out).parent) if detected_out else "")
+            source_sp_job_dir = row.get("source_job_dir") or row.get("job_dir") or (
+                str(Path(detected_out).parent) if detected_out else ""
+            )
             rows.append(
                 {
                     **local,
@@ -77,7 +77,16 @@ def select_short_aimd_from_successful_sp(config: Dict[str, Any]) -> Path:
                 }
             )
     if not rows:
-        rows.append({"status": "skipped_no_successful_sp_patch", "source_sp_status": "", "requested_label_mode": "short_aimd", "extxyz_path": ""})
+        rows.append(
+            {
+                "status": "skipped_no_complete_successful_sp_set" if parsed_sp else "skipped_no_successful_sp_patch",
+                "source_sp_status": "",
+                "requested_label_mode": "short_aimd",
+                "extxyz_path": "",
+                "parsed_sp_rows": str(len(parsed_sp)),
+                "successful_sp_rows": str(len(successful_sp)),
+            }
+        )
     return write_rows(p(config, "exports_dir") / "selected_short_aimd_manifest.csv", rows)
 
 

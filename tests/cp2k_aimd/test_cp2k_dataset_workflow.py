@@ -5,7 +5,7 @@ import yaml
 
 from pepp_initial_builder.cp2k_aimd.dataset_builder import build_aimd_dataset
 from pepp_initial_builder.cp2k_aimd.hpc_jobs import make_hpc_cp2k_jobs
-from pepp_initial_builder.cp2k_aimd.input_writer import write_cp2k_label_inputs
+from pepp_initial_builder.cp2k_aimd.input_writer import select_short_aimd_from_successful_sp, write_cp2k_label_inputs
 from pepp_initial_builder.cp2k_aimd.manifest import export_aimd_dataset_manifest
 from pepp_initial_builder.cp2k_aimd.parser import parse_cp2k_outputs
 from pepp_initial_builder.reuse.lmp_proj_discovery import discover_lmp_proj_modules
@@ -180,3 +180,48 @@ def test_cp2k_inputs_slurm_and_no_output_status(tmp_path):
     exported = export_aimd_dataset_manifest(cfg)
     exported_df = pd.read_csv(exported)
     assert exported_df.iloc[0]["usable_for_mlff_training"] == False
+
+
+def test_select_short_aimd_uses_current_successful_sp_manifest(tmp_path):
+    cfg = _cfg(tmp_path)
+    a = tmp_path / "data/cp2k_aimd/seed_structures/a/structure.extxyz"
+    b = tmp_path / "data/cp2k_aimd/seed_structures/b/structure.extxyz"
+    _write_extxyz(a)
+    _write_extxyz(b)
+    local_manifest = tmp_path / "data/cp2k_aimd/seed_structures/aimd_local_manifest.csv"
+    local_manifest.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(
+        [
+            {"aimd_structure_id": "closed_anchor_0007_PE_PS", "status": "available", "family": "PE_PS_mixed_h_capped_silica_contact", "extxyz_path": str(a)},
+            {"aimd_structure_id": "closed_anchor_0008_PP_PS", "status": "available", "family": "PP_PS_mixed_h_capped_silica_contact", "extxyz_path": str(b)},
+        ]
+    ).to_csv(local_manifest, index=False)
+    parsed_manifest = tmp_path / "data/cp2k_aimd/parsed/cp2k_parsed_manifest.csv"
+    parsed_manifest.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(
+        [
+            {
+                "aimd_structure_id": "closed_anchor_0007_PE_PS",
+                "family": "PE_PS_mixed_h_capped_silica_contact",
+                "label_mode": "sp_force",
+                "status": "parsed_real_cp2k_output",
+                "frames_extxyz_path": str(tmp_path / "parsed_sp_a.extxyz"),
+                "detected_cp2k_out": str(tmp_path / "jobs/a/runs/stamp/cp2k.out"),
+            },
+            {
+                "aimd_structure_id": "closed_anchor_0008_PP_PS",
+                "family": "PP_PS_mixed_h_capped_silica_contact",
+                "label_mode": "sp_force",
+                "status": "parsed_real_cp2k_output",
+                "frames_extxyz_path": str(tmp_path / "parsed_sp_b.extxyz"),
+                "detected_cp2k_out": str(tmp_path / "jobs/b/runs/stamp/cp2k.out"),
+            },
+        ]
+    ).to_csv(parsed_manifest, index=False)
+
+    selected = select_short_aimd_from_successful_sp(cfg)
+    selected_df = pd.read_csv(selected)
+
+    assert list(selected_df["status"]) == ["selected_for_short_aimd", "selected_for_short_aimd"]
+    assert list(selected_df["aimd_structure_id"]) == ["closed_anchor_0007_PE_PS", "closed_anchor_0008_PP_PS"]
+    assert set(selected_df["family"]) == {"PE_PS_mixed_h_capped_silica_contact", "PP_PS_mixed_h_capped_silica_contact"}
