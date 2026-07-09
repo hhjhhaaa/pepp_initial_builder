@@ -12,12 +12,12 @@ paths:
   jobs_dir: outputs/jobs
   figures_dir: outputs/figures
 run:
-  run_id: pilot_20260709_premlff_pp_in_porems_sio2
+  run_id: pilot_20260709_premlff_ps_in_porems_sio2
   clean_start: false
   forbid_reuse_existing_tiny_outputs: false
 baseline:
-  system_id: pilot_20260709_premlff_pp_in_porems_sio2
-  polymer: PP
+  system_id: pilot_20260709_premlff_ps_in_porems_sio2
+  polymer: PS
   n_chains: 4
   repeat_units_per_chain: 20
   pore_source: porems
@@ -74,14 +74,11 @@ mlff_assumptions:
   min_cell_multiple_of_cutoff: 2.0
   min_cell_length_A: 12.0
 full_pore_seed_matrix:
-  purpose: premlff_pp_in_bare_porems_sio2_baseline
+  purpose: premlff_ps_in_bare_porems_sio2_baseline
   pore_diameter_nm:
   - 4.0
   pore_length_nm:
   - 6.0
-  pe_pp_compositions:
-  - - 0.0
-    - 1.0
   chain_lengths_backbone:
   - 40
   repeat_units_per_chain:
@@ -96,6 +93,10 @@ full_pore_seed_matrix:
   max_atoms_tiny: 30000
   max_atoms_pilot: 30000
   max_atoms_main: 30000
+  polymer_compositions:
+  - PE: 0.0
+    PP: 0.0
+    PS: 1.0
 full_pore_seed:
   wall_buffer_A: 3.0
   end_buffer_A: 3.0

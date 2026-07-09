@@ -171,3 +171,68 @@ def test_relax_metrics_corrects_polymer_elements_from_roles(tmp_path):
     )
     assert metrics["min_polymer_silica_distance_A"] == 2.0
     assert metrics["polymer_inside_pore_fraction"] == 1.0
+
+
+
+def test_combined_lammps_data_offsets_silica_types_after_polymer_types(tmp_path):
+    from pepp_initial_builder.mlff_seed.lammps_relax import _write_combined_lammps_data
+
+    seed = tmp_path / "seed.extxyz"
+    seed.write_text(
+        "5\n"
+        "Lattice=\"20 0 0 0 20 0 0 0 20\" Properties=species:S:1:pos:R:3 pbc=\"T T T\"\n"
+        "Si 0 0 0\n"
+        "O 1 0 0\n"
+        "C 2 0 0\n"
+        "C 3 0 0\n"
+        "H 4 0 0\n",
+        encoding="utf-8",
+    )
+    template = tmp_path / "template"
+    template.mkdir()
+    (template / "polymer.data").write_text(
+        "LAMMPS data\n\n"
+        "3 atoms\n0 bonds\n0 angles\n0 dihedrals\n0 impropers\n\n"
+        "4 atom types\n\n"
+        "0 10 xlo xhi\n0 10 ylo yhi\n0 10 zlo zhi\n\n"
+        "Masses\n\n"
+        "1 12.011 # c\n"
+        "2 12.011 # c1\n"
+        "3 12.011 # cp\n"
+        "4 1.008 # hc\n\n"
+        "Atoms\n\n"
+        "1 1 1 0.0 2 0 0\n"
+        "2 1 3 0.0 3 0 0\n"
+        "3 1 4 0.0 4 0 0\n\n"
+        "Bonds\n\nAngles\n\nDihedrals\n\nImpropers\n\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "full_pore_relax.data"
+    n_silica, n_polymer, silica_type = _write_combined_lammps_data(seed, [template], out)
+    text = out.read_text(encoding="utf-8")
+    assert n_silica == 2
+    assert n_polymer == 3
+    assert silica_type == {"Si": 5, "O": 6, "H": 7}
+    assert "7 atom types" in text
+    assert "5 28.085500 # Si" in text
+    assert "6 15.999400 # O" in text
+    assert "1 0 5 0.000000" in text
+    assert "2 0 6 0.000000" in text
+
+
+def test_lammps_relax_input_uses_dynamic_silica_types(tmp_path):
+    inp = tmp_path / "in.relax"
+    _write_lammps_input(
+        inp,
+        1,
+        1,
+        1,
+        1,
+        {"temperature_K": 523.0},
+        {"Si": 5, "O": 6, "H": 7},
+    )
+    text = inp.read_text(encoding="utf-8")
+    assert "mass 5 28.085500" in text
+    assert "pair_coeff 6 6 0.054000 3.470000" in text
+    assert "group silica type 5 6 7" in text
+    assert "group silica type 3 4 5" not in text

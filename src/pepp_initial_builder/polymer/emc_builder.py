@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -20,6 +21,15 @@ from pepp_initial_builder.polymer.matrix import matrix_rows
 def select_rows(config: Dict[str, Any], tiny: bool = False, pilot: bool = False, max_systems: int | None = None):
     rows = matrix_rows(config, "tiny" if tiny else "pilot" if pilot else "matrix")
     return rows[:max_systems] if max_systems is not None else rows
+
+
+def _emc_env(paths: Dict[str, str]) -> Dict[str, str]:
+    env = os.environ.copy()
+    conda_bin = Path(sys.executable).resolve().parent
+    emc_scripts = Path(paths["root"]) / "scripts"
+    emc_bin = Path(paths["root"]) / "bin"
+    env.update({"EMC_ROOT": paths["root"], "PATH": f"{conda_bin}:{emc_scripts}:{emc_bin}:{env.get('PATH', '')}"})
+    return env
 
 
 def _emc_paths(config: Dict[str, Any]) -> Dict[str, str]:
@@ -92,7 +102,7 @@ def write_emc_chain_template(config: Dict[str, Any], chain_type: str, chain_leng
     recipe = outdir / "polymer.esh"
     recipe.write_text(_recipe_text(row, config), encoding="utf-8")
     env = os.environ.copy()
-    env.update({"EMC_ROOT": paths["root"], "PATH": f"{Path(paths['root']) / 'scripts'}:{Path(paths['root']) / 'bin'}:{env.get('PATH', '')}"})
+    env = _emc_env(paths)
     setup = subprocess.run([paths["emc_pl"], f"-ntotal={row['estimated_total_atoms']}", f"-field={config.get('emc', {}).get('force_field', 'pcff')}", "-replace", "polymer"], cwd=outdir, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False, timeout=int(config.get("emc", {}).get("attempt_timeout_seconds", 300)))
     (outdir / "emc_setup.log").write_text(setup.stdout, encoding="utf-8")
     if setup.returncode != 0:
@@ -119,7 +129,7 @@ def build_system(config: Dict[str, Any], row: Dict[str, Any]) -> Path:
     recipe = system_dir / "polymer.esh"
     recipe.write_text(_recipe_text(row, config), encoding="utf-8")
     env = os.environ.copy()
-    env.update({"EMC_ROOT": paths["root"], "PATH": f"{Path(paths['root']) / 'scripts'}:{Path(paths['root']) / 'bin'}:{env.get('PATH', '')}"})
+    env = _emc_env(paths)
     setup = subprocess.run([paths["emc_pl"], f"-ntotal={max(int(row['estimated_total_atoms']), 50)}", f"-field={config.get('emc', {}).get('force_field', 'pcff')}", "-replace", "polymer"], cwd=system_dir, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False, timeout=int(config.get("emc", {}).get("attempt_timeout_seconds", 300)))
     (system_dir / "emc_setup.log").write_text(setup.stdout, encoding="utf-8")
     if setup.returncode != 0:

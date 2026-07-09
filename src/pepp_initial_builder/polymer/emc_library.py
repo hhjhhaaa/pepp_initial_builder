@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from contextlib import contextmanager
 import fcntl
 from pathlib import Path
@@ -129,6 +130,15 @@ def pure_library_row(config: Dict[str, Any], system_id: str, mode: str = "pilot"
         if str(row.get("system_id")) == system_id:
             return row
     raise KeyError(f"No EMC library system_id {system_id!r} in {mode} config")
+
+
+def _emc_env(paths: Dict[str, str]) -> Dict[str, str]:
+    env = os.environ.copy()
+    conda_bin = Path(sys.executable).resolve().parent
+    emc_scripts = Path(paths["root"]) / "scripts"
+    emc_bin = Path(paths["root"]) / "bin"
+    env.update({"EMC_ROOT": paths["root"], "PATH": f"{conda_bin}:{emc_scripts}:{emc_bin}:{env.get('PATH', '')}"})
+    return env
 
 
 def _emc_paths(config: Dict[str, Any]) -> Dict[str, str]:
@@ -605,7 +615,7 @@ def build_pure_library_system(config: Dict[str, Any], row: Dict[str, Any], run_r
     recipe = system_dir / "polymer.esh"
     recipe.write_text(render_pure_recipe(row, config), encoding="utf-8")
     env = os.environ.copy()
-    env.update({"EMC_ROOT": paths["root"], "PATH": f"{Path(paths['root']) / 'scripts'}:{Path(paths['root']) / 'bin'}:{env.get('PATH', '')}"})
+    env = _emc_env(paths)
     timeout_setup = int(config.get("emc", {}).get("attempt_timeout_seconds", 300))
     timeout_build = int(config.get("emc", {}).get("build_timeout_seconds", 900))
     _run_captured([paths["emc_pl"], "-replace", "polymer"], system_dir, env, system_dir / "emc_setup.log", timeout_setup)

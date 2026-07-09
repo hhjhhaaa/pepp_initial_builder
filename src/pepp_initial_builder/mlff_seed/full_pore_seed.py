@@ -92,6 +92,39 @@ def _composition_label(pe: float, pp: float) -> str:
     return f"PE_HDPE{int(round(pe * 100)):02d}_PP{int(round(pp * 100)):02d}"
 
 
+def _composition_specs(matrix: Dict[str, Any]) -> List[List[Dict[str, float]]]:
+    if "polymer_compositions" in matrix:
+        parsed = []
+        for item in matrix.get("polymer_compositions", []):
+            if isinstance(item, dict):
+                specs = [{"component": str(component).upper(), "fraction": float(fraction)} for component, fraction in item.items()]
+            else:
+                values = list(item)
+                if len(values) != 3:
+                    raise ValueError("polymer_compositions list entries must be dicts or [PE, PP, PS] fractions")
+                specs = [
+                    {"component": "PE", "fraction": float(values[0])},
+                    {"component": "PP", "fraction": float(values[1])},
+                    {"component": "PS", "fraction": float(values[2])},
+                ]
+            parsed.append([spec for spec in specs if float(spec["fraction"]) > 0.0])
+        return parsed
+    return [
+        [{"component": "PE", "fraction": float(pe)}, {"component": "PP", "fraction": float(pp)}]
+        for pe, pp in matrix.get("pe_pp_compositions", [])
+    ]
+
+
+def _composition_label_from_specs(specs: List[Dict[str, float]]) -> str:
+    fractions = {spec["component"]: float(spec["fraction"]) for spec in specs}
+    pe = fractions.get("PE", 0.0)
+    pp = fractions.get("PP", 0.0)
+    ps = fractions.get("PS", 0.0)
+    if ps <= 0.0:
+        return _composition_label(pe, pp)
+    return f"PE{int(round(pe * 100)):02d}_PP{int(round(pp * 100)):02d}_PS{int(round(ps * 100)):02d}"
+
+
 def _loading_multiplier(config: Dict[str, Any], loading: str) -> int:
     values = config.get("full_pore_seed", {}).get("loading_chain_multiplier", {})
     return max(1, int(values.get(str(loading), 1)))
@@ -120,6 +153,14 @@ def _infer_template_roles(chain_type: str, elems: List[str], coords: List[List[f
             atom_role = "PP_side_methyl_H"
             is_side = True
             parent = parent_for.get(attached_methyl)
+        elif chain_type == "PS" and elem == "C":
+            atom_role = "PS_C"
+            is_side = False
+            parent = None
+        elif chain_type == "PS" and elem == "H":
+            atom_role = "PS_H"
+            is_side = False
+            parent = None
         elif elem == "C":
             atom_role = f"{chain_type}_backbone_C"
             is_side = False
@@ -140,6 +181,7 @@ def _infer_template_roles(chain_type: str, elems: List[str], coords: List[List[f
                 "polymer_type": chain_type,
                 "pe_variant": "PE_HDPE_linear" if chain_type == "PE" else "",
                 "pp_variant": "PP_atactic_like_v0" if chain_type == "PP" else "",
+                "ps_variant": "PS_atactic_phenyl_v0" if chain_type == "PS" else "",
                 "atom_role": atom_role,
                 "is_side_group": bool(is_side),
                 "parent_template_atom_id": "" if parent is None else parent + 1,
@@ -212,13 +254,14 @@ def build_full_pore_seed_structures(config: Dict[str, Any], mode: str = "tiny") 
             min_silica = float(seed_cfg.get("min_polymer_silica_distance_A", 1.6))
             pore_radius = estimate_pore_radius_A(pore, box, coords)
             matrix = config["full_pore_seed_matrix"]
-            for pe, pp in matrix["pe_pp_compositions"]:
+            for specs in _composition_specs(matrix):
+                fractions = {spec["component"]: float(spec["fraction"]) for spec in specs}
                 for loading in matrix.get("polymer_loading_modes", ["low"]):
                     for seed_value in matrix.get("seeds", [1]):
                         if made >= maxn:
                             break
                         seed = int(seed_value)
-                        composition = _composition_label(float(pe), float(pp))
+                        composition = _composition_label_from_specs(specs)
                         sid = f"full_pore_seed_{made + 1:04d}_{composition}_{loading}_seed{seed}"
                         structure_dir = outbase / sid
                         structure_dir.mkdir(parents=True, exist_ok=True)
@@ -227,9 +270,13 @@ def build_full_pore_seed_structures(config: Dict[str, Any], mode: str = "tiny") 
                         polymer_elems: List[str] = []
                         role_templates: List[Dict[str, Any]] = []
                         template_index = 0
-                        for chain_type, fraction in [("PE", float(pe)), ("PP", float(pp))]:
+                        for spec in specs:
+                            chain_type = str(spec["component"]).upper()
+                            fraction = float(spec["fraction"])
                             if fraction <= 0:
                                 continue
+                            if chain_type not in {"PE", "PP", "PS"}:
+                                raise RuntimeError(f"Unsupported full-pore polymer component: {chain_type}")
                             for copy_idx in range(_loading_multiplier(config, str(loading))):
                                 template_index += 1
                                 template_dir = structure_dir / "emc_chain_templates" / f"{chain_type.lower()}_{copy_idx + 1:02d}"
@@ -287,8 +334,9 @@ def build_full_pore_seed_structures(config: Dict[str, Any], mode: str = "tiny") 
                             "source_pore_model_id": pore["pore_model_id"],
                             "purpose": "pilot_production_full_pore_relaxed_cp2k_crop_source",
                             "polymer_architecture": composition,
-                            "pe_variant": "PE_HDPE_linear" if float(pe) > 0 else "",
-                            "pp_variant": "PP_atactic_like_v0" if float(pp) > 0 else "",
+                            "pe_variant": "PE_HDPE_linear" if fractions.get("PE", 0.0) > 0 else "",
+                            "pp_variant": "PP_atactic_like_v0" if fractions.get("PP", 0.0) > 0 else "",
+                            "ps_variant": "PS_atactic_phenyl_v0" if fractions.get("PS", 0.0) > 0 else "",
                             "composition": composition,
                             "loading_mode": loading,
                             "seed": seed,
@@ -313,6 +361,7 @@ def build_full_pore_seed_structures(config: Dict[str, Any], mode: str = "tiny") 
                                 "polymer_architecture": composition,
                                 "pe_variant": metadata["pe_variant"],
                                 "pp_variant": metadata["pp_variant"],
+                                "ps_variant": metadata["ps_variant"],
                                 "composition": composition,
                                 "loading_mode": loading,
                                 "seed": seed,
