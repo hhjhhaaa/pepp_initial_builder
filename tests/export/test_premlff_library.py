@@ -18,14 +18,18 @@ def test_build_premlff_structure_library_merges_snapshots_and_metrics(tmp_path):
             "full_pore_seed_id": "seed1",
             "source_stage": "lammps_relaxed_full_pore",
             "snapshot_path": "/tmp/relaxed.extxyz",
-            "polymer_architecture": "PE_HDPE100_PP00",
-            "composition": "PE_HDPE100_PP00",
+            "polymer_architecture": "PE75_PP00_PS25",
+            "composition": "PE75_PP00_PS25",
             "pe_variant": "PE_HDPE_linear",
+            "ps_variant": "PS_atactic_phenyl_v0",
             "atom_roles_path": "/tmp/roles.csv",
             "time_ps": 70.0,
             "usable_for_cp2k_crop": True,
         }
     ]).to_csv(exports / "full_pore_snapshot_manifest.csv", index=False)
+    seeds = tmp_path / "data" / "runs" / run_id / "mlff_seed" / "structures"
+    seeds.mkdir(parents=True)
+    pd.DataFrame([{"full_pore_seed_id": "seed1", "component_chain_counts": "{'PE': 3, 'PS': 1}"}]).to_csv(seeds / "full_pore_seed_manifest.csv", index=False)
     pd.DataFrame([
         {
             "full_pore_seed_id": "seed1",
@@ -54,7 +58,8 @@ def test_build_premlff_structure_library_merges_snapshots_and_metrics(tmp_path):
         "premlff_structure_library": {"source_run_ids": [run_id]},
     })
     df = pd.read_csv(out)
-    assert df.loc[0, "polymer"] == "PE"
+    assert df.loc[0, "polymer"] == "PE/PS"
+    assert df.loc[0, "component_chain_counts"] == "{'PE': 3, 'PS': 1}"
     assert df.loc[0, "library_status"] == "available_relaxed_premlff_seed"
     assert df.loc[0, "min_polymer_silica_distance_A"] == 3.0
     assert (tmp_path / "outputs" / "runs" / "library" / "logs" / "premlff_porems_structure_library.md").exists()

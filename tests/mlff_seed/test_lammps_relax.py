@@ -220,6 +220,120 @@ def test_combined_lammps_data_offsets_silica_types_after_polymer_types(tmp_path)
     assert "2 0 6 0.000000" in text
 
 
+
+def _section_text(path, section):
+    lines = path.read_text(encoding="utf-8").splitlines()
+    start = lines.index(section) + 2
+    rows = []
+    for line in lines[start:]:
+        if not line.strip():
+            if rows:
+                break
+            continue
+        if not line.split()[0].isdigit():
+            if rows:
+                break
+            continue
+        rows.append(line)
+    return rows
+
+
+def test_combined_lammps_data_remaps_mixed_atom_and_topology_labels(tmp_path):
+    from pepp_initial_builder.mlff_seed.lammps_relax import _write_combined_lammps_data
+
+    seed = tmp_path / "seed.extxyz"
+    seed.write_text(
+        "9\n"
+        "Lattice=\"30 0 0 0 30 0 0 0 30\" Properties=species:S:1:pos:R:3 pbc=\"T T T\"\n"
+        "Si 0 0 0\n"
+        "O 1 0 0\n"
+        "C 2 0 0\n"
+        "H 3 0 0\n"
+        "H 4 0 0\n"
+        "C 5 0 0\n"
+        "H 6 0 0\n"
+        "H 7 0 0\n"
+        "H 8 0 0\n",
+        encoding="utf-8",
+    )
+    t1 = tmp_path / "pe"
+    t2 = tmp_path / "ps"
+    t1.mkdir()
+    t2.mkdir()
+    (t1 / "polymer.data").write_text(
+        "LAMMPS data\n\n"
+        "3 atoms\n1 bonds\n1 angles\n0 dihedrals\n0 impropers\n\n"
+        "2 atom types\n1 bond types\n1 angle types\n\n"
+        "0 10 xlo xhi\n0 10 ylo yhi\n0 10 zlo zhi\n\n"
+        "Masses\n\n"
+        "1 12.011 # c\n"
+        "2 1.008 # h\n\n"
+        "Atoms\n\n"
+        "1 1 1 0.0 0 0 0\n"
+        "2 1 2 0.0 1 0 0\n"
+        "3 1 2 0.0 2 0 0\n\n"
+        "Bonds\n\n"
+        "1 1 1 2 # c,h\n\n"
+        "Angles\n\n"
+        "1 1 2 1 3 # h,c,h\n\n"
+        "Dihedrals\n\n"
+        "Impropers\n\n",
+        encoding="utf-8",
+    )
+    (t2 / "polymer.data").write_text(
+        "LAMMPS data\n\n"
+        "4 atoms\n1 bonds\n1 angles\n0 dihedrals\n1 impropers\n\n"
+        "2 atom types\n1 bond types\n1 angle types\n1 improper types\n\n"
+        "0 10 xlo xhi\n0 10 ylo yhi\n0 10 zlo zhi\n\n"
+        "Masses\n\n"
+        "1 12.011 # cp\n"
+        "2 1.008 # hc\n\n"
+        "Atoms\n\n"
+        "1 1 1 0.0 0 0 0\n"
+        "2 1 2 0.0 1 0 0\n"
+        "3 1 2 0.0 2 0 0\n"
+        "4 1 2 0.0 3 0 0\n\n"
+        "Bonds\n\n"
+        "1 1 1 2 # cp,hc\n\n"
+        "Angles\n\n"
+        "1 1 2 1 3 # hc,cp,hc\n\n"
+        "Dihedrals\n\n"
+        "Impropers\n\n"
+        "1 1 2 1 3 4 # hc,cp,hc,hc\n\n",
+        encoding="utf-8",
+    )
+    params = tmp_path / "polymer.params"
+    params.write_text(
+        "mass 1 1.008 # h\n"
+        "mass 2 12.011 # c\n"
+        "mass 3 1.008 # hc\n"
+        "mass 4 12.011 # cp\n"
+        "bond_coeff 1 1.0 1.0 # cp,hc\n"
+        "bond_coeff 2 1.0 1.0 # c,h\n"
+        "angle_coeff 1 1.0 1.0 # hc,cp,hc\n"
+        "angle_coeff 2 1.0 1.0 # h,c,h\n"
+        "angle_coeff 99 bb 1.0 1.0 # cross-term-not-data-type\n"
+        "improper_coeff 7 0.0 0.0 # cp,hc,hc,hc\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "full_pore_relax.data"
+    n_silica, n_polymer, silica_type = _write_combined_lammps_data(seed, [t1, t2], out, params)
+    text = out.read_text(encoding="utf-8")
+    assert n_silica == 2
+    assert n_polymer == 7
+    assert silica_type == {"Si": 5, "O": 6, "H": 7}
+    assert "7 atom types" in text
+    assert "2 bond types" in text
+    assert "2 angle types" in text
+    assert "7 improper types" in text
+    atom_rows = _section_text(out, "Atoms")
+    assert atom_rows[2].split()[2] == "2"
+    assert atom_rows[5].split()[2] == "4"
+    assert _section_text(out, "Bonds") == ["1 2 3 4", "2 1 6 7"]
+    assert _section_text(out, "Angles") == ["1 2 4 3 5", "2 1 7 6 8"]
+    assert _section_text(out, "Impropers") == ["1 7 7 6 8 9"]
+
+
 def test_lammps_relax_input_uses_dynamic_silica_types(tmp_path):
     inp = tmp_path / "in.relax"
     _write_lammps_input(

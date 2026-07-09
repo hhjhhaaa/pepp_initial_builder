@@ -32,6 +32,10 @@ def _lammps_executable(config: Dict[str, Any]) -> str | None:
 
 
 def _section_rows(path: Path, section: str) -> List[List[str]]:
+    return [row["values"] for row in _section_rows_with_labels(path, section)]
+
+
+def _section_rows_with_labels(path: Path, section: str) -> List[Dict[str, Any]]:
     lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
     start = None
     for idx, line in enumerate(lines):
@@ -40,9 +44,10 @@ def _section_rows(path: Path, section: str) -> List[List[str]]:
             break
     if start is None:
         return []
-    rows: List[List[str]] = []
+    rows: List[Dict[str, Any]] = []
     for line in lines[start:]:
-        clean = line.split("#", 1)[0].strip()
+        clean, _, comment = line.partition("#")
+        clean = clean.strip()
         if not clean:
             if rows:
                 break
@@ -52,17 +57,99 @@ def _section_rows(path: Path, section: str) -> List[List[str]]:
             if rows:
                 break
             continue
-        rows.append(clean.split())
+        rows.append({"values": clean.split(), "label": comment.strip()})
     return rows
+
+
+def _is_number(text: str) -> bool:
+    try:
+        float(text)
+    except ValueError:
+        return False
+    return True
+
+
+def _canonical_improper_label(label: str) -> str:
+    parts = [part.strip() for part in label.split(",") if part.strip()]
+    return ",".join(sorted(parts)) if parts else label
+
+
+def _mass_labels(path: Path) -> Dict[int, Tuple[float, str]]:
+    lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    start = None
+    for idx, line in enumerate(lines):
+        if line.strip().split("#", 1)[0].strip() == "Masses":
+            start = idx + 1
+            break
+    if start is None:
+        return {}
+    masses: Dict[int, Tuple[float, str]] = {}
+    for line in lines[start:]:
+        clean, _, comment = line.partition("#")
+        parts = clean.strip().split()
+        if not parts:
+            if masses:
+                break
+            continue
+        if not parts[0].replace("-", "").isdigit():
+            if masses:
+                break
+            continue
+        if len(parts) >= 2:
+            masses[int(parts[0])] = (float(parts[1]), comment.strip())
+    return masses
+
+
+def _params_type_labels(path: Path) -> Dict[str, int]:
+    return {label: type_id for type_id, (_mass, label) in _params_masses(path).items() if label}
+
+
+def _params_masses(path: Path) -> Dict[int, Tuple[float, str]]:
+    masses: Dict[int, Tuple[float, str]] = {}
+    if not path.exists():
+        return masses
+    for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        clean, _, comment = line.partition("#")
+        parts = clean.strip().split()
+        if len(parts) >= 3 and parts[0] == "mass" and parts[1].isdigit():
+            masses[int(parts[1])] = (float(parts[2]), comment.strip())
+    return masses
+
+
+def _params_topology_type_labels(path: Path) -> Dict[str, Dict[str, int]]:
+    sections = {
+        "bond_coeff": "Bonds",
+        "angle_coeff": "Angles",
+        "dihedral_coeff": "Dihedrals",
+        "improper_coeff": "Impropers",
+    }
+    labels: Dict[str, Dict[str, int]] = {name: {} for name in sections.values()}
+    if not path.exists():
+        return labels
+    for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        clean, _, comment = line.partition("#")
+        parts = clean.strip().split()
+        if len(parts) < 3 or parts[0] not in sections or not parts[1].isdigit():
+            continue
+        # EMC class2 parameter files also contain cross-term coeff lines whose
+        # third token is a symbolic style marker. Those are not LAMMPS data
+        # section type ids and should not participate in topology remapping.
+        if not _is_number(parts[2]):
+            continue
+        label = comment.strip()
+        if label:
+            section = sections[parts[0]]
+            type_id = int(parts[1])
+            labels[section][label] = type_id
+            if section == "Impropers":
+                labels[section].setdefault(_canonical_improper_label(label), type_id)
+    return labels
 
 
 def _template_topology(data_path: Path) -> Dict[str, Any]:
     atoms = _section_rows(data_path, "Atoms")
-    sections = {name: _section_rows(data_path, name) for name in ["Bonds", "Angles", "Dihedrals", "Impropers"]}
-    masses = {}
-    for row in _section_rows(data_path, "Masses"):
-        if len(row) >= 2:
-            masses[int(row[0])] = (float(row[1]), " ".join(row[2:]))
+    sections = {name: _section_rows_with_labels(data_path, name) for name in ["Bonds", "Angles", "Dihedrals", "Impropers"]}
+    masses = _mass_labels(data_path)
     atom_rows = []
     for row in atoms:
         atom_rows.append(
@@ -77,7 +164,11 @@ def _template_topology(data_path: Path) -> Dict[str, Any]:
     return {"atoms": atom_rows, "masses": masses, "atom_type_count": atom_type_count, **sections}
 
 
-def _copy_polymer_params(template_dirs: Sequence[Path], out: Path) -> None:
+def _copy_polymer_params(seed_dir: Path, template_dirs: Sequence[Path], out: Path) -> Path:
+    mixed_params = seed_dir / "emc_mixed_params" / "polymer.params"
+    if mixed_params.exists():
+        out.write_text(mixed_params.read_text(encoding="utf-8", errors="ignore"), encoding="utf-8")
+        return mixed_params
     param_paths = [d / "polymer.params" for d in template_dirs if (d / "polymer.params").exists()]
     if not param_paths:
         raise RuntimeError("Missing EMC polymer.params for LAMMPS relaxation")
@@ -86,9 +177,10 @@ def _copy_polymer_params(template_dirs: Sequence[Path], out: Path) -> None:
     if any(text != first for text in texts[1:]):
         raise RuntimeError("Mixed EMC polymer.params are not merge-safe; build a single mixed-polymer EMC topology first")
     out.write_text(first, encoding="utf-8")
+    return param_paths[0]
 
 
-def _write_combined_lammps_data(seed_extxyz: Path, template_dirs: Sequence[Path], out: Path) -> Tuple[int, int, Dict[str, int]]:
+def _write_combined_lammps_data(seed_extxyz: Path, template_dirs: Sequence[Path], out: Path, params_path: Path | None = None) -> Tuple[int, int, Dict[str, int]]:
     elems, coords, box = read_xyz_like(seed_extxyz)
     template_tops = [_template_topology(d / "polymer.data") for d in template_dirs]
     n_polymer = sum(len(t["atoms"]) for t in template_tops)
@@ -97,15 +189,33 @@ def _write_combined_lammps_data(seed_extxyz: Path, template_dirs: Sequence[Path]
         raise RuntimeError("Cannot identify silica/polymer split in full-pore seed")
     if any(elem not in SILICA_ELEMENTS for elem in elems[:n_silica]):
         raise RuntimeError("Full-pore seed atom order is not silica-first followed by polymer templates")
-    polymer_atom_type_count = max([int(t.get("atom_type_count", 0)) for t in template_tops] or [0])
+    params_labels = _params_type_labels(params_path) if params_path else {}
+    topology_type_labels = _params_topology_type_labels(params_path) if params_path else {}
+    if params_labels:
+        remap_by_template: List[Dict[int, int]] = []
+        polymer_masses = _params_masses(params_path) if params_path else {}
+        for top in template_tops:
+            remap: Dict[int, int] = {}
+            for old_type, (mass, label) in top.get("masses", {}).items():
+                if label not in params_labels:
+                    raise RuntimeError(f"Mixed polymer params missing atom type label {label!r}")
+                new_type = params_labels[label]
+                remap[old_type] = new_type
+                if new_type not in polymer_masses:
+                    polymer_masses[new_type] = (mass, label)
+            remap_by_template.append(remap)
+        polymer_atom_type_count = max(params_labels.values() or [0])
+    else:
+        remap_by_template = [{type_id: type_id for type_id in top.get("masses", {})} for top in template_tops]
+        polymer_atom_type_count = max([int(t.get("atom_type_count", 0)) for t in template_tops] or [0])
+        polymer_masses: Dict[int, Tuple[float, str]] = {}
+        for top in template_tops:
+            for type_id, mass_row in top.get("masses", {}).items():
+                if type_id in polymer_masses and abs(polymer_masses[type_id][0] - mass_row[0]) > 1.0e-6:
+                    raise RuntimeError(f"Conflicting polymer mass for atom type {type_id}")
+                polymer_masses[type_id] = mass_row
     silica_type = _silica_type_map(polymer_atom_type_count)
     total_atom_types = polymer_atom_type_count + len(SILICA_ORDER)
-    polymer_masses: Dict[int, Tuple[float, str]] = {}
-    for top in template_tops:
-        for type_id, mass_row in top.get("masses", {}).items():
-            if type_id in polymer_masses and abs(polymer_masses[type_id][0] - mass_row[0]) > 1.0e-6:
-                raise RuntimeError(f"Conflicting polymer mass for atom type {type_id}")
-            polymer_masses[type_id] = mass_row
     missing_masses = [type_id for type_id in range(1, polymer_atom_type_count + 1) if type_id not in polymer_masses]
     if missing_masses:
         raise RuntimeError(f"Missing polymer masses for atom types {missing_masses}")
@@ -113,10 +223,10 @@ def _write_combined_lammps_data(seed_extxyz: Path, template_dirs: Sequence[Path]
     angle_count = sum(len(t["Angles"]) for t in template_tops)
     dihedral_count = sum(len(t["Dihedrals"]) for t in template_tops)
     improper_count = sum(len(t["Impropers"]) for t in template_tops)
-    max_bond_type = max([int(row[1]) for t in template_tops for row in t["Bonds"]] or [0])
-    max_angle_type = max([int(row[1]) for t in template_tops for row in t["Angles"]] or [0])
-    max_dihedral_type = max([int(row[1]) for t in template_tops for row in t["Dihedrals"]] or [0])
-    max_improper_type = max([int(row[1]) for t in template_tops for row in t["Impropers"]] or [0])
+    max_bond_type = max(topology_type_labels.get("Bonds", {}).values() or [int(row["values"][1]) for t in template_tops for row in t["Bonds"]] or [0])
+    max_angle_type = max(topology_type_labels.get("Angles", {}).values() or [int(row["values"][1]) for t in template_tops for row in t["Angles"]] or [0])
+    max_dihedral_type = max(topology_type_labels.get("Dihedrals", {}).values() or [int(row["values"][1]) for t in template_tops for row in t["Dihedrals"]] or [0])
+    max_improper_type = max(topology_type_labels.get("Impropers", {}).values() or [int(row["values"][1]) for t in template_tops for row in t["Impropers"]] or [0])
     with out.open("w", encoding="utf-8") as handle:
         handle.write("PE/PP/PS-silica full-pore LAMMPS relax data; polymer topology from EMC, silica fixed host\n\n")
         handle.write(f"{len(elems)} atoms\n{bond_count} bonds\n{angle_count} angles\n{dihedral_count} dihedrals\n{improper_count} impropers\n\n")
@@ -145,16 +255,28 @@ def _write_combined_lammps_data(seed_extxyz: Path, template_dirs: Sequence[Path]
                 new_id = atom_offset + local_idx + 1
                 x, y, z = coords[source_offset + local_idx]
                 old_to_new[(tidx, atom["old_id"])] = new_id
-                handle.write(f"{new_id} {atom['mol'] + mol_offset} {atom['type']} {atom['charge']:.6f} {x:.10f} {y:.10f} {z:.10f}\n")
+                handle.write(f"{new_id} {atom['mol'] + mol_offset} {remap_by_template[tidx][atom['type']]} {atom['charge']:.6f} {x:.10f} {y:.10f} {z:.10f}\n")
             atom_offset += len(top["atoms"])
             source_offset += len(top["atoms"])
             mol_offset += max(atom["mol"] for atom in top["atoms"])
         for section, width in [("Bonds", 2), ("Angles", 3), ("Dihedrals", 4), ("Impropers", 4)]:
             rows = []
+            label_map = topology_type_labels.get(section, {})
             for tidx, top in enumerate(template_tops):
                 for row in top[section]:
-                    atom_ids = [old_to_new[(tidx, int(x))] for x in row[2 : 2 + width]]
-                    rows.append([int(row[1]), *atom_ids])
+                    values = row["values"]
+                    if label_map:
+                        label = row.get("label", "")
+                        lookup = label
+                        if lookup not in label_map and section == "Impropers":
+                            lookup = _canonical_improper_label(label)
+                        if lookup not in label_map:
+                            raise RuntimeError(f"Mixed polymer params missing {section} type label {label!r}")
+                        type_id = label_map[lookup]
+                    else:
+                        type_id = int(values[1])
+                    atom_ids = [old_to_new[(tidx, int(x))] for x in values[2 : 2 + width]]
+                    rows.append([type_id, *atom_ids])
             handle.write(f"\n{section}\n\n")
             for idx, row in enumerate(rows, start=1):
                 handle.write(f"{idx} " + " ".join(str(x) for x in row) + "\n")
@@ -670,8 +792,8 @@ def write_lammps_relax_inputs(config: Dict[str, Any], mode: str = "tiny") -> Pat
                 raise RuntimeError("seed_extxyz_missing")
             if not template_dirs:
                 raise RuntimeError("emc_chain_templates_missing")
-            _copy_polymer_params(template_dirs, relax_dir / "polymer.params")
-            n_silica, n_polymer, silica_type = _write_combined_lammps_data(seed_extxyz, template_dirs, relax_dir / "full_pore_relax.data")
+            params_source = _copy_polymer_params(seed_dir, template_dirs, relax_dir / "polymer.params")
+            n_silica, n_polymer, silica_type = _write_combined_lammps_data(seed_extxyz, template_dirs, relax_dir / "full_pore_relax.data", params_source)
             _write_lammps_input(relax_dir / "in.relax", warmup_steps, high_steps, cool_steps, target_steps, relax_cfg, silica_type)
             proc = subprocess.run([lmp, "-in", "in.relax"], cwd=relax_dir, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False, timeout=int(relax_cfg.get("timeout_seconds", 1800)))
             (relax_dir / "lammps_relax.log").write_text(proc.stdout, encoding="utf-8")

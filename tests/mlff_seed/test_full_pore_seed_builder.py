@@ -25,3 +25,16 @@ def test_polymer_compositions_support_ps_and_keep_pe_pp_labels():
     modern = _composition_specs({"polymer_compositions": [{"PE": 0.0, "PP": 0.0, "PS": 1.0}]})
     assert modern == [[{"component": "PS", "fraction": 1.0}]]
     assert _composition_label_from_specs(modern[0]) == "PE00_PP00_PS100"
+
+
+
+def test_component_chain_counts_gives_exact_ps_doped_chain_numbers():
+    from pepp_initial_builder.mlff_seed.full_pore_seed import _component_chain_counts
+
+    cfg = {"full_pore_seed": {"loading_chain_multiplier": {"baseline_4chains": 4}}}
+    counts = _component_chain_counts(
+        cfg,
+        [{"component": "PE", "fraction": 0.75}, {"component": "PS", "fraction": 0.25}],
+        "baseline_4chains",
+    )
+    assert counts == {"PE": 3, "PS": 1}

@@ -18,13 +18,14 @@ def _resolve(root: Path, value: str | Path) -> Path:
 
 def _polymer_from_composition(composition: str) -> str:
     text = str(composition)
-    if "PS100" in text:
-        return "PS"
-    if "PP100" in text:
-        return "PP"
-    if "PE_HDPE100" in text or "PE100" in text:
-        return "PE"
-    return text
+    components = []
+    if "PE_HDPE100" in text or "PE100" in text or ("PE" in text and "PE00" not in text):
+        components.append("PE")
+    if "PP100" in text or ("PP" in text and "PP00" not in text):
+        components.append("PP")
+    if "PS100" in text or ("PS" in text and "PS00" not in text):
+        components.append("PS")
+    return "/".join(dict.fromkeys(components)) if components else text
 
 
 def _read_csv(path: Path) -> pd.DataFrame:
@@ -46,10 +47,13 @@ def _library_rows(config: Dict[str, Any]) -> List[Dict[str, Any]]:
     for run_id in config.get("premlff_structure_library", {}).get("source_run_ids", []):
         snapshots = _read_csv(root / "data" / "runs" / run_id / "exports" / "full_pore_snapshot_manifest.csv")
         metrics = _read_csv(root / "outputs" / "runs" / run_id / "logs" / "full_pore_relax_metrics.csv")
+        seeds = _read_csv(root / "data" / "runs" / run_id / "mlff_seed" / "structures" / "full_pore_seed_manifest.csv")
         if snapshots.empty:
             rows.append({"source_run_id": run_id, "library_status": "missing_snapshot_manifest"})
             continue
         merged = snapshots.merge(metrics, on="full_pore_seed_id", how="left", suffixes=("", "_metric")) if not metrics.empty else snapshots
+        if not seeds.empty and "component_chain_counts" in seeds.columns:
+            merged = merged.merge(seeds[["full_pore_seed_id", "component_chain_counts"]], on="full_pore_seed_id", how="left")
         pore_meta = _pore_metadata(root, run_id)
         validation = pore_meta.get("validation", {}) if pore_meta else {}
         counts = validation.get("element_counts", {}) if validation else {}
@@ -65,6 +69,7 @@ def _library_rows(config: Dict[str, Any]) -> List[Dict[str, Any]]:
                     "full_pore_seed_id": record.get("full_pore_seed_id", ""),
                     "polymer": _polymer_from_composition(str(composition)),
                     "composition": composition,
+                    "component_chain_counts": record.get("component_chain_counts", ""),
                     "polymer_architecture": record.get("polymer_architecture", record.get("polymer_architecture_metric", "")),
                     "pe_variant": record.get("pe_variant", ""),
                     "pp_variant": record.get("pp_variant", ""),

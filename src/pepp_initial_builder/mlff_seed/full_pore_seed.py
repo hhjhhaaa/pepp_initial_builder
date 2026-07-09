@@ -15,7 +15,7 @@ from pepp_initial_builder.common.run import run_id
 from pepp_initial_builder.pore.config import ensure_pore_dirs, pore_root
 from pepp_initial_builder.pore.porems_builder import atoms_from_elements, available_pore_rows, read_xyz_like
 from pepp_initial_builder.pore.surface_classifier import estimate_pore_radius_A, inside_pore_fraction, min_cross_distance, pore_center
-from pepp_initial_builder.polymer.emc_builder import write_emc_chain_template
+from pepp_initial_builder.polymer.emc_builder import write_emc_chain_template, write_emc_mixed_template
 
 
 def _packmol_executable(config: Dict[str, Any]) -> str | None:
@@ -123,6 +123,25 @@ def _composition_label_from_specs(specs: List[Dict[str, float]]) -> str:
     if ps <= 0.0:
         return _composition_label(pe, pp)
     return f"PE{int(round(pe * 100)):02d}_PP{int(round(pp * 100)):02d}_PS{int(round(ps * 100)):02d}"
+
+
+
+def _component_chain_counts(config: Dict[str, Any], specs: List[Dict[str, float]], loading: str) -> Dict[str, int]:
+    total = _loading_multiplier(config, loading)
+    fractions = {spec["component"]: max(float(spec["fraction"]), 0.0) for spec in specs}
+    norm = sum(fractions.values()) or 1.0
+    scaled = {component: value / norm * total for component, value in fractions.items() if value > 0.0}
+    counts = {component: max(1, int(np.floor(value))) for component, value in scaled.items()}
+    while sum(counts.values()) < total:
+        component = max(scaled, key=lambda name: scaled[name] - counts.get(name, 0))
+        counts[component] = counts.get(component, 0) + 1
+    while sum(counts.values()) > total:
+        candidates = [name for name, count in counts.items() if count > 1]
+        component = min(candidates or list(counts), key=lambda name: scaled.get(name, 0.0) - counts.get(name, 0))
+        counts[component] -= 1
+        if counts[component] <= 0:
+            counts.pop(component, None)
+    return counts
 
 
 def _loading_multiplier(config: Dict[str, Any], loading: str) -> int:
@@ -270,17 +289,17 @@ def build_full_pore_seed_structures(config: Dict[str, Any], mode: str = "tiny") 
                         polymer_elems: List[str] = []
                         role_templates: List[Dict[str, Any]] = []
                         template_index = 0
-                        for spec in specs:
-                            chain_type = str(spec["component"]).upper()
-                            fraction = float(spec["fraction"])
-                            if fraction <= 0:
-                                continue
+                        chain_counts = _component_chain_counts(config, specs, str(loading))
+                        if len(chain_counts) > 1:
+                            mixed_dir = structure_dir / "emc_mixed_params"
+                            write_emc_mixed_template(config, chain_counts, int(matrix["chain_lengths_backbone"][0]), seed, mixed_dir)
+                        for chain_type, count in chain_counts.items():
                             if chain_type not in {"PE", "PP", "PS"}:
                                 raise RuntimeError(f"Unsupported full-pore polymer component: {chain_type}")
-                            for copy_idx in range(_loading_multiplier(config, str(loading))):
+                            for copy_idx in range(int(count)):
                                 template_index += 1
                                 template_dir = structure_dir / "emc_chain_templates" / f"{chain_type.lower()}_{copy_idx + 1:02d}"
-                                template = write_emc_chain_template(config, chain_type, int(matrix["chain_lengths_backbone"][0]), seed + copy_idx, template_dir)
+                                template = write_emc_chain_template(config, chain_type, int(matrix["chain_lengths_backbone"][0]), seed + template_index, template_dir)
                                 polymer_templates.append(Path(template["pdb"]))
                                 elems_template, coords_template = pdb_elements_coords_via_obabel(template["pdb"], config.get("tools", {}).get("known_openbabel_executable"))
                                 polymer_elems.extend(elems_template)
@@ -338,6 +357,7 @@ def build_full_pore_seed_structures(config: Dict[str, Any], mode: str = "tiny") 
                             "pp_variant": "PP_atactic_like_v0" if fractions.get("PP", 0.0) > 0 else "",
                             "ps_variant": "PS_atactic_phenyl_v0" if fractions.get("PS", 0.0) > 0 else "",
                             "composition": composition,
+                            "component_chain_counts": chain_counts,
                             "loading_mode": loading,
                             "seed": seed,
                             "packing_method": "packmol_cylindrical_constraint",
@@ -363,6 +383,7 @@ def build_full_pore_seed_structures(config: Dict[str, Any], mode: str = "tiny") 
                                 "pp_variant": metadata["pp_variant"],
                                 "ps_variant": metadata["ps_variant"],
                                 "composition": composition,
+                                "component_chain_counts": chain_counts,
                                 "loading_mode": loading,
                                 "seed": seed,
                                 "polymer_inside_pore_fraction": inside_fraction,

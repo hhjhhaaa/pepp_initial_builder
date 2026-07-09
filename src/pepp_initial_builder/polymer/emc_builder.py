@@ -117,6 +117,48 @@ def write_emc_chain_template(config: Dict[str, Any], chain_type: str, chain_leng
     return {"pdb": str(outdir / "polymer.pdb"), "xyz": str(outdir / "polymer.xyz"), "data": str(outdir / "polymer.data")}
 
 
+
+def _estimate_atoms_for_components(component_counts: Dict[str, int], chain_length: int) -> int:
+    per_chain = {"PE": 3 * int(chain_length) + 20, "PP": int(4.5 * int(chain_length)) + 20, "PS": int(8.0 * int(chain_length)) + 20}
+    return max(50, sum(per_chain[str(component).upper()] * int(count) for component, count in component_counts.items() if int(count) > 0))
+
+
+def write_emc_mixed_template(config: Dict[str, Any], component_counts: Dict[str, int], chain_length: int, seed: int, outdir: str | Path) -> Dict[str, str]:
+    counts = {str(component).upper(): int(count) for component, count in component_counts.items() if int(count) > 0}
+    unsupported = sorted(set(counts) - {"PE", "PP", "PS"})
+    if unsupported:
+        raise RuntimeError(f"Unsupported EMC mixed chain types: {unsupported}")
+    outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+    row = {
+        "system_id": "mixed_" + "_".join(f"{component}{count}" for component, count in sorted(counts.items())) + f"_N{chain_length}_seed{seed}",
+        "chain_length_backbone": int(chain_length),
+        "seed": int(seed),
+        "n_pe_chains": counts.get("PE", 0),
+        "n_pp_chains": counts.get("PP", 0),
+        "n_ps_chains": counts.get("PS", 0),
+        "estimated_total_atoms": _estimate_atoms_for_components(counts, int(chain_length)),
+        "initial_packing_density_g_cm3": float(config.get("density", {}).get("initial_packing_density_g_cm3", 0.85)),
+    }
+    paths = _emc_paths(config)
+    recipe = outdir / "polymer.esh"
+    recipe.write_text(_recipe_text(row, config), encoding="utf-8")
+    env = _emc_env(paths)
+    setup = subprocess.run([paths["emc_pl"], f"-ntotal={row['estimated_total_atoms']}", f"-field={config.get('emc', {}).get('force_field', 'pcff')}", "-replace", "polymer"], cwd=outdir, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False, timeout=int(config.get("emc", {}).get("attempt_timeout_seconds", 300)))
+    (outdir / "emc_setup.log").write_text(setup.stdout, encoding="utf-8")
+    if setup.returncode != 0:
+        raise RuntimeError("EMC setup failed for mixed polymer template")
+    build = subprocess.run([paths["emc"], "build.emc"], cwd=outdir, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False, timeout=int(config.get("emc", {}).get("build_timeout_seconds", 900)))
+    (outdir / "emc_build.log").write_text(build.stdout, encoding="utf-8")
+    if build.returncode != 0 or not (outdir / "polymer.params").exists() or not (outdir / "polymer.data").exists():
+        raise RuntimeError("EMC build failed for mixed polymer template")
+    if (outdir / "polymer.pdb.gz").exists():
+        _gunzip(outdir / "polymer.pdb.gz", outdir / "polymer.pdb")
+    if (outdir / "polymer.pdb").exists():
+        convert_with_obabel(outdir / "polymer.pdb", outdir / "polymer.xyz", config.get("tools", {}).get("known_openbabel_executable"))
+    return {"pdb": str(outdir / "polymer.pdb"), "xyz": str(outdir / "polymer.xyz"), "data": str(outdir / "polymer.data"), "params": str(outdir / "polymer.params")}
+
+
 def _gunzip(src: Path, dst: Path) -> None:
     with gzip.open(src, "rb") as fin, dst.open("wb") as fout:
         shutil.copyfileobj(fin, fout)
