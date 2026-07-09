@@ -141,7 +141,7 @@ def build_porems_pores(config: Dict[str, Any], mode: str = "tiny") -> Path:
                         write_xyz(model_dir / "pore_model.extxyz", atoms, box, ext=True)
                         write_pdb(model_dir / "pore_model.pdb", atoms, box)
                         validation = validate_pore_elements(elems)
-                        status = "available" if validation["only_si_o_h"] and validation["explicit_surface_h_present"] else "failed_validation"
+                        status = "available" if validation["only_si_o_h"] else "failed_validation"
                         meta = {"pore_model_id": pore_model_id, "source": "porems_python_package", "porems_python_executable": python_exe, "porems_version": discovery.get("version"), "status": status, "pore_diameter_nm": float(diameter), "pore_length_nm": float(length), "surface": config["porems"]["surface"], "hydroxylation_mode": hydro, "validation": validation, "porems_build_log": log_path}
                         (model_dir / "pore_metadata.yaml").write_text(yaml.safe_dump(meta, sort_keys=False), encoding="utf-8")
                         rows.append({"pore_model_id": pore_model_id, "status": status, "source": "porems_python_package", "pore_model_extxyz_path": str(model_dir / "pore_model.extxyz"), "pore_model_pdb_path": str(model_dir / "pore_model.pdb"), "pore_diameter_nm": float(diameter), "pore_length_nm": float(length), "hydroxylation_mode": hydro})

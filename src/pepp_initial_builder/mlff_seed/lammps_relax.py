@@ -204,7 +204,42 @@ write_dump all custom relaxed_snapshot.dump id mol type q x y z modify sort id
     )
 
 
-def _dump_to_extxyz(dump: Path, out: Path, box: Tuple[float, float, float]) -> None:
+def _authoritative_elements(seed_extxyz: Path, n_silica: int, total_atoms: int, atom_roles_path: Path | None = None) -> List[str]:
+    seed_elems, _coords, _box = read_xyz_like(seed_extxyz)
+    labels = [""] * total_atoms
+    for idx in range(min(n_silica, total_atoms)):
+        labels[idx] = seed_elems[idx] if idx < len(seed_elems) and seed_elems[idx] in SILICA_TYPE else "Si"
+    if atom_roles_path and atom_roles_path.exists():
+        roles = pd.read_csv(atom_roles_path)
+        for row in roles.to_dict("records"):
+            atom_id = int(row.get("atom_id", 0))
+            element = str(row.get("element", "")).strip()
+            if 1 <= atom_id <= total_atoms and element in {"C", "H"}:
+                labels[atom_id - 1] = element
+    for idx in range(total_atoms):
+        if labels[idx]:
+            continue
+        if idx < len(seed_elems) and seed_elems[idx] in {"C", "H", "O", "Si"}:
+            labels[idx] = seed_elems[idx]
+        else:
+            raise RuntimeError(f"Cannot assign authoritative element for atom {idx + 1}")
+    return labels
+
+
+def _apply_atom_role_elements(elems: List[str], atom_roles_path: Path) -> List[str]:
+    if not atom_roles_path.exists():
+        return elems
+    corrected = list(elems)
+    roles = pd.read_csv(atom_roles_path)
+    for row in roles.to_dict("records"):
+        atom_id = int(row.get("atom_id", 0))
+        element = str(row.get("element", "")).strip()
+        if 1 <= atom_id <= len(corrected) and element in {"C", "H"}:
+            corrected[atom_id - 1] = element
+    return corrected
+
+
+def _dump_to_extxyz(dump: Path, out: Path, box: Tuple[float, float, float], elements: Sequence[str] | None = None) -> None:
     lines = dump.read_text(encoding="utf-8", errors="ignore").splitlines()
     marker = lines.index("ITEM: ATOMS id mol type q x y z")
     rows = []
@@ -217,9 +252,9 @@ def _dump_to_extxyz(dump: Path, out: Path, box: Tuple[float, float, float]) -> N
     with out.open("w", encoding="utf-8") as handle:
         handle.write(f"{len(rows)}\n")
         handle.write(f'Lattice="{box[0]} 0 0 0 {box[1]} 0 0 0 {box[2]}" Properties=species:S:1:pos:R:3 pbc="T T T"\n')
-        for _atom_id, type_id, x, y, z in rows:
-            handle.write(f"{elem_by_type[type_id]} {x:.10f} {y:.10f} {z:.10f}\n")
-
+        for atom_id, type_id, x, y, z in rows:
+            element = elements[atom_id - 1] if elements is not None and 1 <= atom_id <= len(elements) else elem_by_type[type_id]
+            handle.write(f"{element} {x:.10f} {y:.10f} {z:.10f}\n")
 
 def _parse_thermo_log(path: Path) -> List[Dict[str, float]]:
     rows: List[Dict[str, float]] = []
@@ -267,7 +302,11 @@ def _relax_metrics(
     relax_cfg = config.get("lammps_full_pore_relax", {})
     timestep_fs = float(relax_cfg.get("timestep_fs", 0.5))
     thermo = _parse_thermo_log(seed_dir / "lammps_relax" / "lammps_relax.log")
-    hold_start = float(warmup_steps + high_steps + cool_steps)
+    final_step = max((float(r.get("Step", 0.0)) for r in thermo), default=0.0)
+    if target_steps > 0 and final_step > 0.0:
+        hold_start = max(0.0, final_step - float(target_steps))
+    else:
+        hold_start = float(warmup_steps + high_steps + cool_steps)
     hold_rows = [r for r in thermo if r.get("Step", 0.0) >= hold_start]
     temps = [float(r.get("c_tpoly", r.get("Temp", float("nan")))) for r in hold_rows if np.isfinite(r.get("c_tpoly", r.get("Temp", float("nan"))))]
     target_temp = float(gate.get("target_temperature_K", relax_cfg.get("temperature_K", 523.0)))
@@ -301,6 +340,8 @@ def _relax_metrics(
     }
     try:
         elems, coords_list, box = read_xyz_like(Path(relaxed_path))
+        roles_path = seed_dir / "atom_roles.csv"
+        elems = _apply_atom_role_elements(elems, roles_path)
         coords = np.array(coords_list, dtype=float)
         polymer_ids = [idx for idx in range(n_silica, len(elems)) if elems[idx] in {"C", "H"}]
         polymer_heavy = [idx for idx in polymer_ids if elems[idx] == "C"]
@@ -324,7 +365,6 @@ def _relax_metrics(
             metrics["polymer_silica_contact_count_3p5A"] = int(np.sum(arr <= 3.5))
             metrics["polymer_silica_contact_count_5p0A"] = int(np.sum(arr <= 5.0))
             metrics["mean_wall_distance_A"] = float(np.mean(arr))
-        roles_path = seed_dir / "atom_roles.csv"
         if roles_path.exists() and distances:
             roles = pd.read_csv(roles_path)
             dist_by_atom = {atom_id + 1: dist for atom_id, dist in zip(polymer_heavy, distances)}
@@ -606,7 +646,8 @@ def write_lammps_relax_inputs(config: Dict[str, Any], mode: str = "tiny") -> Pat
                 raise RuntimeError("lammps_relax_failed")
             elems, _coords, box = read_xyz_like(seed_extxyz)
             relaxed_path = str(seed_dir / "relaxed.extxyz")
-            _dump_to_extxyz(relax_dir / "relaxed_snapshot.dump", Path(relaxed_path), box)
+            elements = _authoritative_elements(seed_extxyz, n_silica, n_silica + n_polymer, seed_dir / "atom_roles.csv")
+            _dump_to_extxyz(relax_dir / "relaxed_snapshot.dump", Path(relaxed_path), box, elements)
             status = "lammps_relaxed_full_pore"
             reason = ""
             metadata_path = seed_dir / "metadata.yaml"

@@ -54,3 +54,120 @@ def test_lammps_relax_array_activates_project_env(tmp_path):
     assert 'export PYTHONPATH="$PWD/src:${PYTHONPATH:-}"' in collect
     assert "PYTHON_CMD=${PYTHON_CMD:-/public/home/jinhao.hu/.conda/envs/peppmixure/bin/python}" in text
     assert "PYTHON_CMD=${PYTHON_CMD:-/public/home/jinhao.hu/.conda/envs/peppmixure/bin/python}" in collect
+
+
+def test_relax_metrics_uses_final_target_hold_window(tmp_path):
+    from pepp_initial_builder.mlff_seed.lammps_relax import _relax_metrics
+
+    seed_dir = tmp_path / "seed"
+    relax_dir = seed_dir / "lammps_relax"
+    relax_dir.mkdir(parents=True)
+    relaxed = seed_dir / "relaxed.extxyz"
+    relaxed.write_text(
+        "2\n"
+        "Lattice=\"60 0 0 0 60 0 0 0 60\" Properties=species:S:1:pos:R:3 pbc=\"T T T\"\n"
+        "Si 30 30 30\n"
+        "C 33 30 30\n",
+        encoding="utf-8",
+    )
+    (relax_dir / "lammps_relax.log").write_text(
+        "Step c_tpoly PotEng KinEng TotEng Press Atoms\n"
+        "0 0 -10 0 -10 0 2\n"
+        "1000 650 -5 1 -4 0 2\n"
+        "2000 650 -4 1 -3 0 2\n"
+        "3000 400 -3 1 -2 0 2\n"
+        "4663 500 -2 1 -1 0 2\n"
+        "5663 520 -1 1 0 0 2\n",
+        encoding="utf-8",
+    )
+    metrics = _relax_metrics(
+        {
+            "full_pore_seed_matrix": {"pore_diameter_nm": [4.0]},
+            "lammps_full_pore_relax": {"temperature_K": 510.0},
+            "relax_quality_gate": {"target_temperature_K": 510.0},
+        },
+        {"full_pore_seed_id": "seed"},
+        seed_dir,
+        str(relaxed),
+        1,
+        500,
+        1000,
+        500,
+        1000,
+    )
+    assert metrics["hold_temperature_mean_K"] == 510.0
+
+
+def test_dump_to_extxyz_uses_authoritative_atom_role_elements(tmp_path):
+    from pepp_initial_builder.mlff_seed.lammps_relax import _authoritative_elements
+    from pepp_initial_builder.mlff_seed.lammps_relax import _dump_to_extxyz
+
+    seed = tmp_path / "seed.extxyz"
+    seed.write_text(
+        "4\n"
+        "Lattice=\"20 0 0 0 20 0 0 0 20\" Properties=species:S:1:pos:R:3 pbc=\"T T T\"\n"
+        "Si 0 0 0\n"
+        "O 1 0 0\n"
+        "Si 2 0 0\n"
+        "Si 3 0 0\n",
+        encoding="utf-8",
+    )
+    roles = tmp_path / "atom_roles.csv"
+    roles.write_text("atom_id,element,polymer_type,template_index\n3,C,PP,1\n4,H,PP,1\n", encoding="utf-8")
+    dump = tmp_path / "relaxed_snapshot.dump"
+    dump.write_text(
+        "ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n4\nITEM: BOX BOUNDS pp pp pp\n0 20\n0 20\n0 20\n"
+        "ITEM: ATOMS id mol type q x y z\n"
+        "1 0 3 0 0 0 0\n"
+        "2 0 4 0 1 0 0\n"
+        "3 1 3 0 2 0 0\n"
+        "4 1 4 0 3 0 0\n",
+        encoding="utf-8",
+    )
+    labels = _authoritative_elements(seed, 2, 4, roles)
+    out = tmp_path / "relaxed.extxyz"
+    _dump_to_extxyz(dump, out, (20.0, 20.0, 20.0), labels)
+    species = [line.split()[0] for line in out.read_text(encoding="utf-8").splitlines()[2:]]
+    assert species == ["Si", "O", "C", "H"]
+
+
+def test_relax_metrics_corrects_polymer_elements_from_roles(tmp_path):
+    from pepp_initial_builder.mlff_seed.lammps_relax import _relax_metrics
+
+    seed_dir = tmp_path / "seed"
+    relax_dir = seed_dir / "lammps_relax"
+    relax_dir.mkdir(parents=True)
+    relaxed = seed_dir / "relaxed.extxyz"
+    relaxed.write_text(
+        "4\n"
+        "Lattice=\"20 0 0 0 20 0 0 0 20\" Properties=species:S:1:pos:R:3 pbc=\"T T T\"\n"
+        "Si 0 0 0\n"
+        "O 1 0 0\n"
+        "Si 3 0 0\n"
+        "Si 4 0 0\n",
+        encoding="utf-8",
+    )
+    (seed_dir / "atom_roles.csv").write_text("atom_id,element,polymer_type,template_index\n3,C,PP,1\n4,H,PP,1\n", encoding="utf-8")
+    (relax_dir / "lammps_relax.log").write_text(
+        "Step c_tpoly PotEng KinEng TotEng Press Atoms\n"
+        "0 520 -2 1 -1 0 4\n"
+        "1000 522 -1 1 0 0 4\n",
+        encoding="utf-8",
+    )
+    metrics = _relax_metrics(
+        {
+            "full_pore_seed_matrix": {"pore_diameter_nm": [4.0]},
+            "lammps_full_pore_relax": {"temperature_K": 523.0},
+            "relax_quality_gate": {"target_temperature_K": 523.0, "min_contact_count_3p5A": 0, "min_contact_count_5p0A": 0},
+        },
+        {"full_pore_seed_id": "seed"},
+        seed_dir,
+        str(relaxed),
+        2,
+        0,
+        0,
+        0,
+        1000,
+    )
+    assert metrics["min_polymer_silica_distance_A"] == 2.0
+    assert metrics["polymer_inside_pore_fraction"] == 1.0
