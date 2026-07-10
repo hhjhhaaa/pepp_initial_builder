@@ -5,8 +5,6 @@ paths:
 run:
   run_id: pilot_20260709_premlff_porems_structure_library
 premlff_structure_library:
+  include_pore_hosts: true
   source_run_ids:
-    - pilot_20260709_premlff_pe_in_porems_sio2
-    - pilot_20260709_premlff_pp_in_porems_sio2
-    - pilot_20260709_premlff_ps_in_porems_sio2
-    - pilot_20260710_premlff_ps_doped_in_porems_sio2
+    - pilot_20260710_premlff_peppps_matrix_in_porems_sio2

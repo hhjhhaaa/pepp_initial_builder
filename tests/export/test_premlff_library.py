@@ -40,6 +40,17 @@ def test_build_premlff_structure_library_merges_snapshots_and_metrics(tmp_path):
             "polymer_silica_contact_count_5p0A": 12,
         }
     ]).to_csv(logs / "full_pore_relax_metrics.csv", index=False)
+    (pore / "pore_model.extxyz").write_text("2\nLattice=\"20 0 0 0 20 0 0 0 60\" Properties=species:S:1:pos:R:3 pbc=\"T T T\"\nSi 0 0 0\nO 1 0 0\n", encoding="utf-8")
+    pd.DataFrame([{
+        "pore_model_id": "pore",
+        "status": "available",
+        "source": "porems_python_package",
+        "pore_model_extxyz_path": str(pore / "pore_model.extxyz"),
+        "pore_model_pdb_path": str(pore / "pore_model.pdb"),
+        "pore_diameter_nm": 4.0,
+        "pore_length_nm": 6.0,
+        "hydroxylation_mode": "bare_porems_sio2",
+    }]).to_csv(pore.parent / "pore_model_manifest.csv", index=False)
     (pore / "pore_metadata.yaml").write_text(yaml.safe_dump({
         "pore_model_id": "pore",
         "surface": "bare_porems_sio2",
@@ -58,8 +69,11 @@ def test_build_premlff_structure_library_merges_snapshots_and_metrics(tmp_path):
         "premlff_structure_library": {"source_run_ids": [run_id]},
     })
     df = pd.read_csv(out)
-    assert df.loc[0, "polymer"] == "PE/PS"
-    assert df.loc[0, "component_chain_counts"] == "{'PE': 3, 'PS': 1}"
-    assert df.loc[0, "library_status"] == "available_relaxed_premlff_seed"
-    assert df.loc[0, "min_polymer_silica_distance_A"] == 3.0
+    host = df.loc[df["polymer"] == "SiO2_host"].iloc[0]
+    polymer = df.loc[df["library_status"] == "available_relaxed_premlff_seed"].iloc[0]
+    assert host["library_status"] == "available_porems_host_structure"
+    assert str(host["relaxed_extxyz_path"]).endswith("pore_model.extxyz")
+    assert polymer["polymer"] == "PE/PS"
+    assert polymer["component_chain_counts"] == "{'PE': 3, 'PS': 1}"
+    assert polymer["min_polymer_silica_distance_A"] == 3.0
     assert (tmp_path / "outputs" / "runs" / "library" / "logs" / "premlff_porems_structure_library.md").exists()

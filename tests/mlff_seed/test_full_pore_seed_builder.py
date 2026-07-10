@@ -38,3 +38,20 @@ def test_component_chain_counts_gives_exact_ps_doped_chain_numbers():
         "baseline_4chains",
     )
     assert counts == {"PE": 3, "PS": 1}
+
+
+
+def test_component_chain_counts_gives_exact_ternary_chain_numbers():
+    from pepp_initial_builder.mlff_seed.full_pore_seed import _component_chain_counts
+
+    cfg = {"full_pore_seed": {"loading_chain_multiplier": {"baseline_4chains": 4}}}
+    counts = _component_chain_counts(
+        cfg,
+        [
+            {"component": "PE", "fraction": 0.50},
+            {"component": "PP", "fraction": 0.25},
+            {"component": "PS", "fraction": 0.25},
+        ],
+        "baseline_4chains",
+    )
+    assert counts == {"PE": 2, "PP": 1, "PS": 1}
