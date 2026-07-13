@@ -1,0 +1,178 @@
+paths:
+  root: .
+  bulk_initial_manifest: data/exports/polymer_initial_manifest.csv
+  porems_models_dir: data/mesoporous_silica/pore_models
+  silica_patches_dir: data/mesoporous_silica/surface_patches
+  surface_sites_dir: data/mesoporous_silica/surface_sites
+  aimd_local_structures_dir: data/cp2k_aimd/seed_structures
+  full_pore_seed_structures_dir: data/mlff_seed/structures
+  aimd_exports_dir: data/exports
+  exports_dir: data/exports
+  logs_dir: outputs/logs
+  jobs_dir: outputs/jobs
+  figures_dir: outputs/figures
+run:
+  run_id: pilot_20260713_premlff_peppps_small3k_in_porems_sio2
+  clean_start: false
+  forbid_reuse_existing_tiny_outputs: false
+baseline:
+  system_id: pilot_20260713_premlff_peppps_small3k_in_porems_sio2
+  polymer: PE/PP/PS small 3k ternary
+  n_chains: 3
+  repeat_units_per_chain: 10
+  pore_source: porems
+  pore_diameter_nm: 2.2
+  pore_length_nm: 3.0
+  wall_model: bare_porems_sio2
+  explicit_silanol: false
+  hydroxylation: false
+  placement: inside_cylindrical_pore
+  relaxation_backend: lammps
+tools:
+  porems_search_roots:
+  - .
+  - /public/home/jinhao.hu/software
+  - /public/home/jinhao.hu
+  porems_path_hint: null
+  packmol_path_hint: /public/home/jinhao.hu/.conda/envs/peppmixure/bin/packmol
+  known_packmol_executable: /public/home/jinhao.hu/.conda/envs/peppmixure/bin/packmol
+  known_emc_root: /public/home/jinhao.hu/software/EMC
+  known_openbabel_executable: /public/home/jinhao.hu/.conda/envs/peppmixure/bin/obabel
+  known_lammps_executable: /public/home/jinhao.hu/envs/lammps/bin/lmp
+  ase_required: true
+  cp2k_not_required_here: true
+  mlff_not_required_here: true
+chemistry:
+  elements:
+  - C
+  - H
+  - O
+  - Si
+  include_metals: false
+  include_ru: false
+  include_reactions: false
+  explicit_hydrogen: true
+porems:
+  enabled: true
+  model_type: silica_pore
+  pore_shape: cylindrical
+  surface: bare_porems_sio2
+  wall_model: bare_porems_sio2
+  require_explicit_surface_H: false
+  require_no_dangling_bonds: false
+  pore_diameter_nm_candidates:
+  - 2.2
+  pore_length_nm_candidates:
+  - 3.0
+  hydroxylation_modes:
+  - bare_porems_sio2
+  max_pore_models_tiny: 1
+  max_pore_models_pilot: 1
+  max_pore_models_main: 1
+mlff_assumptions:
+  planned_mlff_cutoff_A: 5.0
+  min_cell_multiple_of_cutoff: 2.0
+  min_cell_length_A: 12.0
+full_pore_seed_matrix:
+  purpose: premlff_pe_pp_ps_small3k_ternary_in_bare_porems_sio2
+  pore_diameter_nm:
+  - 2.2
+  pore_length_nm:
+  - 3.0
+  chain_lengths_backbone:
+  - 20
+  repeat_units_per_chain:
+  - 10
+  polymer_loading_modes:
+  - baseline_3chains
+  seeds:
+  - 1
+  tiny_max_systems: 1
+  pilot_max_systems: 1
+  main_max_systems: 1
+  max_atoms_tiny: 4000
+  max_atoms_pilot: 4000
+  max_atoms_main: 4000
+  polymer_compositions:
+  - PE: 0.3333333333
+    PP: 0.3333333333
+    PS: 0.3333333333
+full_pore_seed:
+  wall_buffer_A: 2.5
+  end_buffer_A: 2.5
+  max_initial_overlap_retries: 2000
+  min_polymer_inside_pore_fraction: 0.94
+  min_polymer_silica_distance_A: 1.6
+  loading_chain_multiplier:
+    baseline_3chains: 3
+packing:
+  tolerance_A: 2.0
+  maxit: 5000
+  timeout_seconds: 1200
+  use_packmol_for_polymer_placement: true
+  min_heavy_atom_distance_A: 1.8
+  min_hydrogen_distance_A: 0.8
+  nonbonded_overlap_only: true
+  exclude_1_2_pairs: true
+  exclude_1_3_pairs: true
+  optionally_exclude_1_4_pairs: true
+lammps_full_pore_relax:
+  enabled: true
+  purpose: premlff_polymer_in_fixed_bare_porems_sio2_relaxation
+  protocol: fixed_silica_pore_polymer_multistage_anneal_v1
+  full_pore_box_compression: false
+  temperature_K: 523.0
+  initial_temperature_K: 300.0
+  high_temperature_K: 650.0
+  timestep_fs: 0.5
+  tiny_warmup_steps: 20000
+  tiny_high_temp_steps: 50000
+  tiny_cool_steps: 20000
+  tiny_target_temp_steps: 50000
+  pilot_warmup_steps: 200000
+  pilot_high_temp_steps: 1000000
+  pilot_cool_steps: 400000
+  pilot_target_temp_steps: 4400000
+  main_warmup_steps: 1000000
+  main_high_temp_steps: 2000000
+  main_cool_steps: 1000000
+  main_target_temp_steps: 8000000
+  minimize_etol: 1.0e-06
+  minimize_ftol: 1.0e-08
+  minimize_maxiter: 10000
+  minimize_maxeval: 20000
+  thermo_every: 1000
+  dump_every: 5000
+  use_last_fraction: 0.5
+  timeout_seconds: 21600
+  silica_mobile: false
+  relax_is_training_data: false
+  relax_is_production_md: false
+relax_quality_gate:
+  target_temperature_K: 523.0
+  hold_temperature_mean_tolerance_K: 80.0
+  hold_temperature_std_max_K: 120.0
+  max_abs_coordinate_A: 100000.0
+  max_atom_displacement_between_dumps_A: 20.0
+  min_polymer_silica_distance_A: 1.4
+  min_polymer_inside_pore_fraction: 0.9
+  min_contact_count_3p5A: 1
+  min_contact_count_5p0A: 1
+emc:
+  enabled: true
+  force_field: pcff
+  require_all_atom_output: true
+  attempt_timeout_seconds: 300
+  build_timeout_seconds: 900
+  preferred_force_fields:
+  - PCFF
+outputs:
+  primary_format: extxyz
+  secondary_formats:
+  - pdb
+  - xyz
+  write_cp2k_xyz: false
+  write_metadata_yaml: true
+  write_atom_table: true
+  write_segment_table: true
+  require_cell_pbc: true
