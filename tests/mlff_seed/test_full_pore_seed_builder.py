@@ -12,3 +12,46 @@ def test_full_pore_packmol_input_uses_cylinder_constraint(tmp_path):
     text = Path(inp).read_text(encoding="utf-8")
     assert "fixed_silica_pore.pdb" in text
     assert "inside cylinder 15.000000 15.000000 3.000000 0.0 0.0 1.0 7.000000 24.000000" in text
+
+
+
+def test_polymer_compositions_support_ps_and_keep_pe_pp_labels():
+    from pepp_initial_builder.mlff_seed.full_pore_seed import _composition_label_from_specs
+    from pepp_initial_builder.mlff_seed.full_pore_seed import _composition_specs
+
+    legacy = _composition_specs({"pe_pp_compositions": [[1.0, 0.0]]})
+    assert _composition_label_from_specs(legacy[0]) == "PE_HDPE100_PP00"
+
+    modern = _composition_specs({"polymer_compositions": [{"PE": 0.0, "PP": 0.0, "PS": 1.0}]})
+    assert modern == [[{"component": "PS", "fraction": 1.0}]]
+    assert _composition_label_from_specs(modern[0]) == "PE00_PP00_PS100"
+
+
+
+def test_component_chain_counts_gives_exact_ps_doped_chain_numbers():
+    from pepp_initial_builder.mlff_seed.full_pore_seed import _component_chain_counts
+
+    cfg = {"full_pore_seed": {"loading_chain_multiplier": {"baseline_4chains": 4}}}
+    counts = _component_chain_counts(
+        cfg,
+        [{"component": "PE", "fraction": 0.75}, {"component": "PS", "fraction": 0.25}],
+        "baseline_4chains",
+    )
+    assert counts == {"PE": 3, "PS": 1}
+
+
+
+def test_component_chain_counts_gives_exact_ternary_chain_numbers():
+    from pepp_initial_builder.mlff_seed.full_pore_seed import _component_chain_counts
+
+    cfg = {"full_pore_seed": {"loading_chain_multiplier": {"baseline_4chains": 4}}}
+    counts = _component_chain_counts(
+        cfg,
+        [
+            {"component": "PE", "fraction": 0.50},
+            {"component": "PP", "fraction": 0.25},
+            {"component": "PS", "fraction": 0.25},
+        ],
+        "baseline_4chains",
+    )
+    assert counts == {"PE": 2, "PP": 1, "PS": 1}

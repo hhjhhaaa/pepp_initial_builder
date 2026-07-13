@@ -1,0 +1,69 @@
+paths:
+  root: .
+  systems_dir: data/runs/pilot_20260709_premlff_polymer_density_relax/polymer/systems
+  structure_library_dir: data/runs/pilot_20260709_premlff_polymer_density_relax/structure_library
+  mlff_direct_structures_dir: data/runs/pilot_20260709_premlff_polymer_density_relax/structure_library/mlff_direct
+  aimd_structures_dir: data/runs/pilot_20260709_premlff_polymer_density_relax/structure_library/aimd
+  finetuned_mlff_structures_dir: data/runs/pilot_20260709_premlff_polymer_density_relax/structure_library/fine_tuned_mlff
+  emc_library_dir: data/runs/pilot_20260709_premlff_polymer_density_relax/emc_library
+  matrix_dir: data/runs/pilot_20260709_premlff_polymer_density_relax/polymer/matrix
+  exports_dir: data/runs/pilot_20260709_premlff_polymer_density_relax/exports
+  logs_dir: outputs/runs/pilot_20260709_premlff_polymer_density_relax/logs
+run:
+  run_id: pilot_20260709_premlff_polymer_density_relax
+tools:
+  preferred_builder: emc
+  known_emc_root: /public/home/jinhao.hu/software/EMC
+  known_packmol_executable: /public/home/jinhao.hu/.conda/envs/peppmixure/bin/packmol
+  known_lammps_executable: /public/home/jinhao.hu/envs/lammps/bin/lmp
+  known_openbabel_executable: /public/home/jinhao.hu/.conda/envs/peppmixure/bin/obabel
+emc:
+  enabled: true
+  force_field: pcff
+  require_all_atom_output: true
+  attempt_timeout_seconds: 300
+  build_timeout_seconds: 900
+  preferred_force_fields: [PCFF]
+emc_library:
+  task_lane: mlff_direct
+  intended_runner: density_probe_only
+  output_label_status: no_labels_density_probe
+  force_field: charmm/c36a/cgenff
+  pilot_systems:
+    - system_id: PE_N20_C4_density_relax_seed1
+      component: PE
+      n_chains: 4
+      repeat_units: 20
+      ntotal: 512
+      density_g_cm3: 0.855
+      temperature_K: 523.0
+      pressure_atm: 1.0
+      task_lane: mlff_direct
+    - system_id: PP_N20_C4_density_relax_seed1
+      component: PP
+      n_chains: 4
+      repeat_units: 20
+      ntotal: 752
+      density_g_cm3: 0.85
+      temperature_K: 523.0
+      pressure_atm: 1.0
+      task_lane: mlff_direct
+  thermal_relax:
+    enabled: true
+    protocol: emc_polymer_lammps_thermal_relax_density_probe_v1
+    timestep_fs: 1.0
+    tdamp_fs: 100.0
+    pdamp_fs: 1000.0
+    anneal_temperature_K: 650.0
+    minimize_etol: 1.0e-6
+    minimize_ftol: 1.0e-8
+    minimize_maxiter: 10000
+    minimize_maxeval: 20000
+    warmup_steps: 1000
+    nvt_heat_steps: 5000
+    nvt_cool_steps: 5000
+    npt_steps: 20000
+    nvt_settle_steps: 5000
+    thermo_every: 500
+    dump_every: 5000
+    timeout_seconds: 21600

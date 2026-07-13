@@ -179,3 +179,18 @@ def test_relaxed_extxyz_rewrites_lammps_types_to_elements(tmp_path: Path):
     assert "\n   C" in text
     assert "\n   H" in text
     assert "He" not in text
+
+
+
+def test_emc_env_prefers_active_python_environment_bin(monkeypatch):
+    import sys
+    from pathlib import Path
+
+    from pepp_initial_builder.polymer.emc_builder import _emc_env
+
+    monkeypatch.setenv("PATH", "/usr/bin")
+    env = _emc_env({"root": "/opt/EMC"})
+    entries = env["PATH"].split(":")
+    assert entries[0] == str(Path(sys.executable).resolve().parent)
+    assert entries[1] == "/opt/EMC/scripts"
+    assert entries[2] == "/opt/EMC/bin"

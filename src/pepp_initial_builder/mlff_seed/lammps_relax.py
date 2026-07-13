@@ -13,13 +13,15 @@ from pepp_initial_builder.common.run import run_id
 from pepp_initial_builder.pore.config import ensure_pore_dirs, pore_root
 from pepp_initial_builder.pore.porems_builder import read_xyz_like
 
-SILICA_TYPE = {"Si": 3, "O": 4, "H": 5}
-SILICA_MASS = {3: ("Si", 28.0855), 4: ("O", 15.9994), 5: ("H_silica", 1.008)}
-SILICA_LJ = {
-    3: (0.0930, 4.15),
-    4: (0.0540, 3.47),
-    5: (0.0100, 2.50),
-}
+SILICA_ELEMENTS = {"Si", "O", "H"}
+SILICA_MASS = {"Si": ("Si", 28.0855), "O": ("O", 15.9994), "H": ("H_silica", 1.008)}
+SILICA_LJ = {"Si": (0.0930, 4.15), "O": (0.0540, 3.47), "H": (0.0100, 2.50)}
+SILICA_ORDER = ("Si", "O", "H")
+
+
+def _silica_type_map(polymer_atom_type_count: int) -> Dict[str, int]:
+    start = int(polymer_atom_type_count) + 1
+    return {elem: start + idx for idx, elem in enumerate(SILICA_ORDER)}
 
 
 def _lammps_executable(config: Dict[str, Any]) -> str | None:
@@ -30,6 +32,10 @@ def _lammps_executable(config: Dict[str, Any]) -> str | None:
 
 
 def _section_rows(path: Path, section: str) -> List[List[str]]:
+    return [row["values"] for row in _section_rows_with_labels(path, section)]
+
+
+def _section_rows_with_labels(path: Path, section: str) -> List[Dict[str, Any]]:
     lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
     start = None
     for idx, line in enumerate(lines):
@@ -38,9 +44,10 @@ def _section_rows(path: Path, section: str) -> List[List[str]]:
             break
     if start is None:
         return []
-    rows: List[List[str]] = []
+    rows: List[Dict[str, Any]] = []
     for line in lines[start:]:
-        clean = line.split("#", 1)[0].strip()
+        clean, _, comment = line.partition("#")
+        clean = clean.strip()
         if not clean:
             if rows:
                 break
@@ -50,13 +57,99 @@ def _section_rows(path: Path, section: str) -> List[List[str]]:
             if rows:
                 break
             continue
-        rows.append(clean.split())
+        rows.append({"values": clean.split(), "label": comment.strip()})
     return rows
+
+
+def _is_number(text: str) -> bool:
+    try:
+        float(text)
+    except ValueError:
+        return False
+    return True
+
+
+def _canonical_improper_label(label: str) -> str:
+    parts = [part.strip() for part in label.split(",") if part.strip()]
+    return ",".join(sorted(parts)) if parts else label
+
+
+def _mass_labels(path: Path) -> Dict[int, Tuple[float, str]]:
+    lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    start = None
+    for idx, line in enumerate(lines):
+        if line.strip().split("#", 1)[0].strip() == "Masses":
+            start = idx + 1
+            break
+    if start is None:
+        return {}
+    masses: Dict[int, Tuple[float, str]] = {}
+    for line in lines[start:]:
+        clean, _, comment = line.partition("#")
+        parts = clean.strip().split()
+        if not parts:
+            if masses:
+                break
+            continue
+        if not parts[0].replace("-", "").isdigit():
+            if masses:
+                break
+            continue
+        if len(parts) >= 2:
+            masses[int(parts[0])] = (float(parts[1]), comment.strip())
+    return masses
+
+
+def _params_type_labels(path: Path) -> Dict[str, int]:
+    return {label: type_id for type_id, (_mass, label) in _params_masses(path).items() if label}
+
+
+def _params_masses(path: Path) -> Dict[int, Tuple[float, str]]:
+    masses: Dict[int, Tuple[float, str]] = {}
+    if not path.exists():
+        return masses
+    for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        clean, _, comment = line.partition("#")
+        parts = clean.strip().split()
+        if len(parts) >= 3 and parts[0] == "mass" and parts[1].isdigit():
+            masses[int(parts[1])] = (float(parts[2]), comment.strip())
+    return masses
+
+
+def _params_topology_type_labels(path: Path) -> Dict[str, Dict[str, int]]:
+    sections = {
+        "bond_coeff": "Bonds",
+        "angle_coeff": "Angles",
+        "dihedral_coeff": "Dihedrals",
+        "improper_coeff": "Impropers",
+    }
+    labels: Dict[str, Dict[str, int]] = {name: {} for name in sections.values()}
+    if not path.exists():
+        return labels
+    for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        clean, _, comment = line.partition("#")
+        parts = clean.strip().split()
+        if len(parts) < 3 or parts[0] not in sections or not parts[1].isdigit():
+            continue
+        # EMC class2 parameter files also contain cross-term coeff lines whose
+        # third token is a symbolic style marker. Those are not LAMMPS data
+        # section type ids and should not participate in topology remapping.
+        if not _is_number(parts[2]):
+            continue
+        label = comment.strip()
+        if label:
+            section = sections[parts[0]]
+            type_id = int(parts[1])
+            labels[section][label] = type_id
+            if section == "Impropers":
+                labels[section].setdefault(_canonical_improper_label(label), type_id)
+    return labels
 
 
 def _template_topology(data_path: Path) -> Dict[str, Any]:
     atoms = _section_rows(data_path, "Atoms")
-    sections = {name: _section_rows(data_path, name) for name in ["Bonds", "Angles", "Dihedrals", "Impropers"]}
+    sections = {name: _section_rows_with_labels(data_path, name) for name in ["Bonds", "Angles", "Dihedrals", "Impropers"]}
+    masses = _mass_labels(data_path)
     atom_rows = []
     for row in atoms:
         atom_rows.append(
@@ -67,48 +160,92 @@ def _template_topology(data_path: Path) -> Dict[str, Any]:
                 "charge": float(row[3]),
             }
         )
-    return {"atoms": atom_rows, **sections}
+    atom_type_count = max([atom["type"] for atom in atom_rows] or [0])
+    return {"atoms": atom_rows, "masses": masses, "atom_type_count": atom_type_count, **sections}
 
 
-def _copy_polymer_params(template_dirs: Sequence[Path], out: Path) -> None:
-    params = next((d / "polymer.params" for d in template_dirs if (d / "polymer.params").exists()), None)
-    if not params:
+def _copy_polymer_params(seed_dir: Path, template_dirs: Sequence[Path], out: Path) -> Path:
+    mixed_params = seed_dir / "emc_mixed_params" / "polymer.params"
+    if mixed_params.exists():
+        out.write_text(mixed_params.read_text(encoding="utf-8", errors="ignore"), encoding="utf-8")
+        return mixed_params
+    param_paths = [d / "polymer.params" for d in template_dirs if (d / "polymer.params").exists()]
+    if not param_paths:
         raise RuntimeError("Missing EMC polymer.params for LAMMPS relaxation")
-    text = params.read_text(encoding="utf-8", errors="ignore")
-    out.write_text(text, encoding="utf-8")
+    texts = [p.read_text(encoding="utf-8", errors="ignore") for p in param_paths]
+    first = texts[0]
+    if any(text != first for text in texts[1:]):
+        raise RuntimeError("Mixed EMC polymer.params are not merge-safe; build a single mixed-polymer EMC topology first")
+    out.write_text(first, encoding="utf-8")
+    return param_paths[0]
 
 
-def _write_combined_lammps_data(seed_extxyz: Path, template_dirs: Sequence[Path], out: Path) -> Tuple[int, int]:
+def _write_combined_lammps_data(seed_extxyz: Path, template_dirs: Sequence[Path], out: Path, params_path: Path | None = None) -> Tuple[int, int, Dict[str, int]]:
     elems, coords, box = read_xyz_like(seed_extxyz)
     template_tops = [_template_topology(d / "polymer.data") for d in template_dirs]
     n_polymer = sum(len(t["atoms"]) for t in template_tops)
     n_silica = len(elems) - n_polymer
     if n_silica <= 0:
         raise RuntimeError("Cannot identify silica/polymer split in full-pore seed")
-    if any(elem not in SILICA_TYPE for elem in elems[:n_silica]):
+    if any(elem not in SILICA_ELEMENTS for elem in elems[:n_silica]):
         raise RuntimeError("Full-pore seed atom order is not silica-first followed by polymer templates")
+    params_labels = _params_type_labels(params_path) if params_path else {}
+    topology_type_labels = _params_topology_type_labels(params_path) if params_path else {}
+    if params_labels:
+        remap_by_template: List[Dict[int, int]] = []
+        polymer_masses = _params_masses(params_path) if params_path else {}
+        for top in template_tops:
+            remap: Dict[int, int] = {}
+            for old_type, (mass, label) in top.get("masses", {}).items():
+                if label not in params_labels:
+                    raise RuntimeError(f"Mixed polymer params missing atom type label {label!r}")
+                new_type = params_labels[label]
+                remap[old_type] = new_type
+                if new_type not in polymer_masses:
+                    polymer_masses[new_type] = (mass, label)
+            remap_by_template.append(remap)
+        polymer_atom_type_count = max(params_labels.values() or [0])
+    else:
+        remap_by_template = [{type_id: type_id for type_id in top.get("masses", {})} for top in template_tops]
+        polymer_atom_type_count = max([int(t.get("atom_type_count", 0)) for t in template_tops] or [0])
+        polymer_masses: Dict[int, Tuple[float, str]] = {}
+        for top in template_tops:
+            for type_id, mass_row in top.get("masses", {}).items():
+                if type_id in polymer_masses and abs(polymer_masses[type_id][0] - mass_row[0]) > 1.0e-6:
+                    raise RuntimeError(f"Conflicting polymer mass for atom type {type_id}")
+                polymer_masses[type_id] = mass_row
+    silica_type = _silica_type_map(polymer_atom_type_count)
+    total_atom_types = polymer_atom_type_count + len(SILICA_ORDER)
+    missing_masses = [type_id for type_id in range(1, polymer_atom_type_count + 1) if type_id not in polymer_masses]
+    if missing_masses:
+        raise RuntimeError(f"Missing polymer masses for atom types {missing_masses}")
     bond_count = sum(len(t["Bonds"]) for t in template_tops)
     angle_count = sum(len(t["Angles"]) for t in template_tops)
     dihedral_count = sum(len(t["Dihedrals"]) for t in template_tops)
     improper_count = sum(len(t["Impropers"]) for t in template_tops)
-    max_bond_type = max([int(row[1]) for t in template_tops for row in t["Bonds"]] or [0])
-    max_angle_type = max([int(row[1]) for t in template_tops for row in t["Angles"]] or [0])
-    max_dihedral_type = max([int(row[1]) for t in template_tops for row in t["Dihedrals"]] or [0])
-    max_improper_type = max([int(row[1]) for t in template_tops for row in t["Impropers"]] or [0])
+    max_bond_type = max(topology_type_labels.get("Bonds", {}).values() or [int(row["values"][1]) for t in template_tops for row in t["Bonds"]] or [0])
+    max_angle_type = max(topology_type_labels.get("Angles", {}).values() or [int(row["values"][1]) for t in template_tops for row in t["Angles"]] or [0])
+    max_dihedral_type = max(topology_type_labels.get("Dihedrals", {}).values() or [int(row["values"][1]) for t in template_tops for row in t["Dihedrals"]] or [0])
+    max_improper_type = max(topology_type_labels.get("Impropers", {}).values() or [int(row["values"][1]) for t in template_tops for row in t["Impropers"]] or [0])
     with out.open("w", encoding="utf-8") as handle:
-        handle.write("PE/PP-silica full-pore LAMMPS relax data; polymer topology from EMC, silica fixed host\n\n")
+        handle.write("PE/PP/PS-silica full-pore LAMMPS relax data; polymer topology from EMC, silica fixed host\n\n")
         handle.write(f"{len(elems)} atoms\n{bond_count} bonds\n{angle_count} angles\n{dihedral_count} dihedrals\n{improper_count} impropers\n\n")
-        handle.write("5 atom types\n")
+        handle.write(f"{total_atom_types} atom types\n")
         handle.write(f"{max_bond_type} bond types\n{max_angle_type} angle types\n{max_dihedral_type} dihedral types\n{max_improper_type} improper types\n\n")
         handle.write(f"0.0 {box[0]:.10f} xlo xhi\n0.0 {box[1]:.10f} ylo yhi\n0.0 {box[2]:.10f} zlo zhi\n\n")
         handle.write("Masses\n\n")
-        handle.write("1 12.01115 # c\n2 1.00797 # hc\n")
-        for type_id, (_name, mass) in SILICA_MASS.items():
-            handle.write(f"{type_id} {mass:.6f} # {_name}\n")
+        for type_id in range(1, polymer_atom_type_count + 1):
+            mass, label = polymer_masses[type_id]
+            suffix = f" # {label}" if label else ""
+            handle.write(f"{type_id} {mass:.6f}{suffix}\n")
+        for elem in SILICA_ORDER:
+            type_id = silica_type[elem]
+            name, mass = SILICA_MASS[elem]
+            handle.write(f"{type_id} {mass:.6f} # {name}\n")
         handle.write("\nAtoms\n\n")
         for idx in range(n_silica):
             x, y, z = coords[idx]
-            handle.write(f"{idx + 1} 0 {SILICA_TYPE[elems[idx]]} 0.000000 {x:.10f} {y:.10f} {z:.10f}\n")
+            handle.write(f"{idx + 1} 0 {silica_type[elems[idx]]} 0.000000 {x:.10f} {y:.10f} {z:.10f}\n")
         old_to_new: Dict[Tuple[int, int], int] = {}
         atom_offset = n_silica
         source_offset = n_silica
@@ -118,29 +255,45 @@ def _write_combined_lammps_data(seed_extxyz: Path, template_dirs: Sequence[Path]
                 new_id = atom_offset + local_idx + 1
                 x, y, z = coords[source_offset + local_idx]
                 old_to_new[(tidx, atom["old_id"])] = new_id
-                handle.write(f"{new_id} {atom['mol'] + mol_offset} {atom['type']} {atom['charge']:.6f} {x:.10f} {y:.10f} {z:.10f}\n")
+                handle.write(f"{new_id} {atom['mol'] + mol_offset} {remap_by_template[tidx][atom['type']]} {atom['charge']:.6f} {x:.10f} {y:.10f} {z:.10f}\n")
             atom_offset += len(top["atoms"])
             source_offset += len(top["atoms"])
             mol_offset += max(atom["mol"] for atom in top["atoms"])
         for section, width in [("Bonds", 2), ("Angles", 3), ("Dihedrals", 4), ("Impropers", 4)]:
             rows = []
+            label_map = topology_type_labels.get(section, {})
             for tidx, top in enumerate(template_tops):
                 for row in top[section]:
-                    atom_ids = [old_to_new[(tidx, int(x))] for x in row[2 : 2 + width]]
-                    rows.append([int(row[1]), *atom_ids])
+                    values = row["values"]
+                    if label_map:
+                        label = row.get("label", "")
+                        lookup = label
+                        if lookup not in label_map and section == "Impropers":
+                            lookup = _canonical_improper_label(label)
+                        if lookup not in label_map:
+                            raise RuntimeError(f"Mixed polymer params missing {section} type label {label!r}")
+                        type_id = label_map[lookup]
+                    else:
+                        type_id = int(values[1])
+                    atom_ids = [old_to_new[(tidx, int(x))] for x in values[2 : 2 + width]]
+                    rows.append([type_id, *atom_ids])
             handle.write(f"\n{section}\n\n")
             for idx, row in enumerate(rows, start=1):
                 handle.write(f"{idx} " + " ".join(str(x) for x in row) + "\n")
-    return n_silica, n_polymer
+    return n_silica, n_polymer, silica_type
 
 
-def _write_lammps_input(path: Path, warmup_steps: int, high_steps: int, cool_steps: int, target_steps: int, cfg: Dict[str, Any]) -> None:
+def _write_lammps_input(path: Path, warmup_steps: int, high_steps: int, cool_steps: int, target_steps: int, cfg: Dict[str, Any], silica_type: Dict[str, int] | None = None) -> None:
     initial_temp = float(cfg.get("initial_temperature_K", 300.0))
     temp = float(cfg.get("temperature_K", 523.0))
     high_temp = float(cfg.get("high_temperature_K", 650.0))
     timestep = float(cfg.get("timestep_fs", 0.5))
     thermo = int(cfg.get("thermo_every", 500))
     dump_every = int(cfg.get("dump_every", 1000))
+    silica_type = silica_type or _silica_type_map(2)
+    silica_mass_lines = "\n".join(f"mass {silica_type[elem]} {SILICA_MASS[elem][1]:.6f}" for elem in SILICA_ORDER)
+    silica_pair_lines = "\n".join(f"pair_coeff {silica_type[elem]} {silica_type[elem]} {SILICA_LJ[elem][0]:.6f} {SILICA_LJ[elem][1]:.6f}" for elem in SILICA_ORDER)
+    silica_group_types = " ".join(str(silica_type[elem]) for elem in SILICA_ORDER)
     path.write_text(
         f"""units real
 atom_style full
@@ -148,14 +301,10 @@ boundary p p p
 read_data full_pore_relax.data
 include polymer.params
 
-mass 3 28.085500
-mass 4 15.999400
-mass 5 1.008000
-pair_coeff 3 3 {SILICA_LJ[3][0]:.6f} {SILICA_LJ[3][1]:.6f}
-pair_coeff 4 4 {SILICA_LJ[4][0]:.6f} {SILICA_LJ[4][1]:.6f}
-pair_coeff 5 5 {SILICA_LJ[5][0]:.6f} {SILICA_LJ[5][1]:.6f}
+{silica_mass_lines}
+{silica_pair_lines}
 
-group silica type 3 4 5
+group silica type {silica_group_types}
 group polymer subtract all silica
 fix freeze_silica silica setforce 0.0 0.0 0.0
 velocity silica set 0.0 0.0 0.0
@@ -204,7 +353,42 @@ write_dump all custom relaxed_snapshot.dump id mol type q x y z modify sort id
     )
 
 
-def _dump_to_extxyz(dump: Path, out: Path, box: Tuple[float, float, float]) -> None:
+def _authoritative_elements(seed_extxyz: Path, n_silica: int, total_atoms: int, atom_roles_path: Path | None = None) -> List[str]:
+    seed_elems, _coords, _box = read_xyz_like(seed_extxyz)
+    labels = [""] * total_atoms
+    for idx in range(min(n_silica, total_atoms)):
+        labels[idx] = seed_elems[idx] if idx < len(seed_elems) and seed_elems[idx] in SILICA_ELEMENTS else "Si"
+    if atom_roles_path and atom_roles_path.exists():
+        roles = pd.read_csv(atom_roles_path)
+        for row in roles.to_dict("records"):
+            atom_id = int(row.get("atom_id", 0))
+            element = str(row.get("element", "")).strip()
+            if 1 <= atom_id <= total_atoms and element in {"C", "H"}:
+                labels[atom_id - 1] = element
+    for idx in range(total_atoms):
+        if labels[idx]:
+            continue
+        if idx < len(seed_elems) and seed_elems[idx] in {"C", "H", "O", "Si"}:
+            labels[idx] = seed_elems[idx]
+        else:
+            raise RuntimeError(f"Cannot assign authoritative element for atom {idx + 1}")
+    return labels
+
+
+def _apply_atom_role_elements(elems: List[str], atom_roles_path: Path) -> List[str]:
+    if not atom_roles_path.exists():
+        return elems
+    corrected = list(elems)
+    roles = pd.read_csv(atom_roles_path)
+    for row in roles.to_dict("records"):
+        atom_id = int(row.get("atom_id", 0))
+        element = str(row.get("element", "")).strip()
+        if 1 <= atom_id <= len(corrected) and element in {"C", "H"}:
+            corrected[atom_id - 1] = element
+    return corrected
+
+
+def _dump_to_extxyz(dump: Path, out: Path, box: Tuple[float, float, float], elements: Sequence[str] | None = None) -> None:
     lines = dump.read_text(encoding="utf-8", errors="ignore").splitlines()
     marker = lines.index("ITEM: ATOMS id mol type q x y z")
     rows = []
@@ -217,9 +401,9 @@ def _dump_to_extxyz(dump: Path, out: Path, box: Tuple[float, float, float]) -> N
     with out.open("w", encoding="utf-8") as handle:
         handle.write(f"{len(rows)}\n")
         handle.write(f'Lattice="{box[0]} 0 0 0 {box[1]} 0 0 0 {box[2]}" Properties=species:S:1:pos:R:3 pbc="T T T"\n')
-        for _atom_id, type_id, x, y, z in rows:
-            handle.write(f"{elem_by_type[type_id]} {x:.10f} {y:.10f} {z:.10f}\n")
-
+        for atom_id, type_id, x, y, z in rows:
+            element = elements[atom_id - 1] if elements is not None and 1 <= atom_id <= len(elements) else elem_by_type[type_id]
+            handle.write(f"{element} {x:.10f} {y:.10f} {z:.10f}\n")
 
 def _parse_thermo_log(path: Path) -> List[Dict[str, float]]:
     rows: List[Dict[str, float]] = []
@@ -267,7 +451,11 @@ def _relax_metrics(
     relax_cfg = config.get("lammps_full_pore_relax", {})
     timestep_fs = float(relax_cfg.get("timestep_fs", 0.5))
     thermo = _parse_thermo_log(seed_dir / "lammps_relax" / "lammps_relax.log")
-    hold_start = float(warmup_steps + high_steps + cool_steps)
+    final_step = max((float(r.get("Step", 0.0)) for r in thermo), default=0.0)
+    if target_steps > 0 and final_step > 0.0:
+        hold_start = max(0.0, final_step - float(target_steps))
+    else:
+        hold_start = float(warmup_steps + high_steps + cool_steps)
     hold_rows = [r for r in thermo if r.get("Step", 0.0) >= hold_start]
     temps = [float(r.get("c_tpoly", r.get("Temp", float("nan")))) for r in hold_rows if np.isfinite(r.get("c_tpoly", r.get("Temp", float("nan"))))]
     target_temp = float(gate.get("target_temperature_K", relax_cfg.get("temperature_K", 523.0)))
@@ -280,6 +468,7 @@ def _relax_metrics(
         "polymer_architecture": row.get("polymer_architecture", ""),
         "pe_variant": row.get("pe_variant", ""),
         "pp_variant": row.get("pp_variant", ""),
+        "ps_variant": row.get("ps_variant", ""),
         "composition": row.get("composition", ""),
         "loading_mode": row.get("loading_mode", ""),
         "seed": row.get("seed", ""),
@@ -296,11 +485,14 @@ def _relax_metrics(
         "mean_wall_distance_A": "",
         "pe_near_wall_fraction": "",
         "pp_near_wall_fraction": "",
+        "ps_near_wall_fraction": "",
         "usable_for_cp2k_crop": False,
         "failure_reason": "",
     }
     try:
         elems, coords_list, box = read_xyz_like(Path(relaxed_path))
+        roles_path = seed_dir / "atom_roles.csv"
+        elems = _apply_atom_role_elements(elems, roles_path)
         coords = np.array(coords_list, dtype=float)
         polymer_ids = [idx for idx in range(n_silica, len(elems)) if elems[idx] in {"C", "H"}]
         polymer_heavy = [idx for idx in polymer_ids if elems[idx] == "C"]
@@ -324,15 +516,16 @@ def _relax_metrics(
             metrics["polymer_silica_contact_count_3p5A"] = int(np.sum(arr <= 3.5))
             metrics["polymer_silica_contact_count_5p0A"] = int(np.sum(arr <= 5.0))
             metrics["mean_wall_distance_A"] = float(np.mean(arr))
-        roles_path = seed_dir / "atom_roles.csv"
         if roles_path.exists() and distances:
             roles = pd.read_csv(roles_path)
             dist_by_atom = {atom_id + 1: dist for atom_id, dist in zip(polymer_heavy, distances)}
             near = {atom for atom, dist in dist_by_atom.items() if dist <= 5.0}
             pe_atoms = set(int(x) for x in roles.loc[roles.get("polymer_type", "") == "PE", "atom_id"].tolist())
             pp_atoms = set(int(x) for x in roles.loc[roles.get("polymer_type", "") == "PP", "atom_id"].tolist())
+            ps_atoms = set(int(x) for x in roles.loc[roles.get("polymer_type", "") == "PS", "atom_id"].tolist())
             metrics["pe_near_wall_fraction"] = float(len(pe_atoms & near) / max(len(pe_atoms), 1))
             metrics["pp_near_wall_fraction"] = float(len(pp_atoms & near) / max(len(pp_atoms), 1))
+            metrics["ps_near_wall_fraction"] = float(len(ps_atoms & near) / max(len(ps_atoms), 1))
         max_abs = float(np.max(np.abs(coords))) if len(coords) else float("inf")
         temp_ok = bool(temps) and abs(temp_mean - target_temp) <= float(gate.get("hold_temperature_mean_tolerance_K", 50.0)) and temp_std <= float(gate.get("hold_temperature_std_max_K", 80.0))
         inside_ok = metrics["polymer_inside_pore_fraction"] >= float(gate.get("min_polymer_inside_pore_fraction", 0.95))
@@ -391,6 +584,7 @@ def _write_relax_products(config: Dict[str, Any], relax_rows: List[Dict[str, Any
                 "polymer_architecture": row.get("polymer_architecture", ""),
                 "pe_variant": row.get("pe_variant", ""),
                 "pp_variant": row.get("pp_variant", ""),
+                "ps_variant": row.get("ps_variant", ""),
                 "composition": row.get("composition", ""),
                 "loading_mode": row.get("loading_mode", ""),
                 "seed": row.get("seed", ""),
@@ -565,6 +759,7 @@ def write_lammps_relax_inputs(config: Dict[str, Any], mode: str = "tiny") -> Pat
                     "polymer_architecture": row.get("polymer_architecture", ""),
                     "pe_variant": row.get("pe_variant", ""),
                     "pp_variant": row.get("pp_variant", ""),
+                    "ps_variant": row.get("ps_variant", ""),
                     "composition": row.get("composition", ""),
                     "loading_mode": row.get("loading_mode", ""),
                     "seed": row.get("seed", ""),
@@ -597,16 +792,17 @@ def write_lammps_relax_inputs(config: Dict[str, Any], mode: str = "tiny") -> Pat
                 raise RuntimeError("seed_extxyz_missing")
             if not template_dirs:
                 raise RuntimeError("emc_chain_templates_missing")
-            _copy_polymer_params(template_dirs, relax_dir / "polymer.params")
-            n_silica, n_polymer = _write_combined_lammps_data(seed_extxyz, template_dirs, relax_dir / "full_pore_relax.data")
-            _write_lammps_input(relax_dir / "in.relax", warmup_steps, high_steps, cool_steps, target_steps, relax_cfg)
+            params_source = _copy_polymer_params(seed_dir, template_dirs, relax_dir / "polymer.params")
+            n_silica, n_polymer, silica_type = _write_combined_lammps_data(seed_extxyz, template_dirs, relax_dir / "full_pore_relax.data", params_source)
+            _write_lammps_input(relax_dir / "in.relax", warmup_steps, high_steps, cool_steps, target_steps, relax_cfg, silica_type)
             proc = subprocess.run([lmp, "-in", "in.relax"], cwd=relax_dir, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False, timeout=int(relax_cfg.get("timeout_seconds", 1800)))
             (relax_dir / "lammps_relax.log").write_text(proc.stdout, encoding="utf-8")
             if proc.returncode != 0:
                 raise RuntimeError("lammps_relax_failed")
             elems, _coords, box = read_xyz_like(seed_extxyz)
             relaxed_path = str(seed_dir / "relaxed.extxyz")
-            _dump_to_extxyz(relax_dir / "relaxed_snapshot.dump", Path(relaxed_path), box)
+            elements = _authoritative_elements(seed_extxyz, n_silica, n_silica + n_polymer, seed_dir / "atom_roles.csv")
+            _dump_to_extxyz(relax_dir / "relaxed_snapshot.dump", Path(relaxed_path), box, elements)
             status = "lammps_relaxed_full_pore"
             reason = ""
             metadata_path = seed_dir / "metadata.yaml"
@@ -665,6 +861,7 @@ def write_lammps_relax_inputs(config: Dict[str, Any], mode: str = "tiny") -> Pat
                 "polymer_architecture": row.get("polymer_architecture", ""),
                 "pe_variant": row.get("pe_variant", ""),
                 "pp_variant": row.get("pp_variant", ""),
+                "ps_variant": row.get("ps_variant", ""),
                 "composition": row.get("composition", ""),
                 "loading_mode": row.get("loading_mode", ""),
                 "seed": row.get("seed", ""),

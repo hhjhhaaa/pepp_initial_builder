@@ -1,0 +1,11 @@
+paths:
+  root: .
+  exports_dir: data/runs/pilot_20260709_premlff_porems_structure_library/exports
+  logs_dir: outputs/runs/pilot_20260709_premlff_porems_structure_library/logs
+run:
+  run_id: pilot_20260709_premlff_porems_structure_library
+premlff_structure_library:
+  include_pore_hosts: true
+  source_run_ids:
+    - pilot_20260710_premlff_peppps_matrix_in_porems_sio2
+    - pilot_20260713_premlff_peppps_small3k_in_porems_sio2
